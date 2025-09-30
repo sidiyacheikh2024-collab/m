@@ -2,6 +2,10 @@
 import { GoogleGenAI, Chat, LiveServerMessage, Modality, Blob } from "@google/genai";
 import { getSystemInstruction } from './instructions';
 
+// --- Local Storage Keys ---
+const USERS_STORAGE_KEY = 'chatAppUsers';
+const LOGGED_IN_USER_KEY = 'chatAppCurrentUser';
+
 // --- DOM Element Selection ---
 const chatContainer = document.getElementById('chat-container') as HTMLDivElement | null;
 const chatMessages = document.getElementById('chat-messages') as HTMLDivElement | null;
@@ -16,10 +20,32 @@ const voiceMenu = document.getElementById('voice-menu') as HTMLDivElement | null
 const callTranscriptContainer = document.getElementById('call-transcript-container') as HTMLDivElement | null;
 const callTranscriptText = document.getElementById('call-transcript-text') as HTMLParagraphElement | null;
 
+// Auth Elements
+const signupButton = document.getElementById('signup-button') as HTMLButtonElement | null;
+const logoutButton = document.getElementById('logout-button') as HTMLButtonElement | null;
+const authModal = document.getElementById('auth-modal') as HTMLDivElement | null;
+const authModalBackdrop = document.getElementById('auth-modal-backdrop') as HTMLDivElement | null;
+const authModalCloseButton = document.getElementById('auth-modal-close-button') as HTMLButtonElement | null;
+const authForm = document.getElementById('auth-form') as HTMLFormElement | null;
+const authModalTitle = document.getElementById('auth-modal-title') as HTMLHeadingElement | null;
+const authModalDescription = document.getElementById('auth-modal-description') as HTMLParagraphElement | null;
+const authSubmitButton = document.getElementById('auth-submit-button') as HTMLButtonElement | null;
+const emailInput = document.getElementById('email-input') as HTMLInputElement | null;
+const passwordInput = document.getElementById('password-input') as HTMLInputElement | null;
+const confirmPasswordWrapper = document.getElementById('confirm-password-wrapper') as HTMLDivElement | null;
+const confirmPasswordInput = document.getElementById('confirm-password') as HTMLInputElement | null;
+const toSignupSwitch = document.getElementById('to-signup-switch') as HTMLParagraphElement | null;
+const toLoginSwitch = document.getElementById('to-login-switch') as HTMLParagraphElement | null;
+const switchToSignupLink = document.getElementById('switch-to-signup') as HTMLAnchorElement | null;
+const switchToLoginLink = document.getElementById('switch-to-login') as HTMLAnchorElement | null;
 
 // --- SVG Icons ---
 const sendIconSVG = `<svg class="send-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path></svg>`;
 const callIconSVG = `<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="currentColor"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M20.01 15.38c-1.23 0-2.42-.2-3.53-.56-.35-.12-.74-.03-1.01.24l-1.57 1.97c-2.83-1.35-5.21-3.73-6.56-6.56l1.97-1.57c.27-.27.35-.66.24-1.01-.37-1.11-.56-2.3-.56-3.53 0-.54-.45-.99-.99-.99H4.19C3.65 3 3 3.24 3 3.99 3 13.28 10.72 21 20.01 21c.75 0 .99-.65.99-1.19v-2.43c0-.54-.45-.99-.99-.99z"/></svg>`;
+
+// --- State ---
+let isLoginMode = true;
+let currentUser: string | null = null;
 
 // --- Live Call State ---
 // Fix: The 'LiveSession' type is not exported. Using 'any' as a workaround.
@@ -133,18 +159,54 @@ function createBlob(data: Float32Array): Blob {
 
 // --- Main Application Logic ---
 function initializeChat() {
-  if (!chatContainer || !chatMessages || !chatForm || !chatInput || !sendButton || !callScreen || !callStatus || !endCallButton || !menuButton || !voiceMenu || !callTranscriptContainer || !callTranscriptText) {
-    console.error('Fatal Error: One or more essential chat/call elements are missing from the DOM.');
+  const essentialElements = [
+    chatContainer, chatMessages, chatForm, chatInput, sendButton,
+    callScreen, callStatus, endCallButton, menuButton, voiceMenu,
+    callTranscriptContainer, callTranscriptText, signupButton, authModal,
+    authModalBackdrop, authModalCloseButton, authForm, authModalTitle,
+    authModalDescription, authSubmitButton, confirmPasswordWrapper,
+    confirmPasswordInput, toSignupSwitch, toLoginSwitch, switchToSignupLink,
+    switchToLoginLink, logoutButton, emailInput, passwordInput
+  ];
+
+  if (essentialElements.some(el => !el)) {
+    console.error('Fatal Error: One or more essential chat/call/auth elements are missing from the DOM.');
     if (document.body) {
-      document.body.innerHTML = '<div style="padding: 20px; text-align: center; color: red; font-family: sans-serif;"><h1>خطأ فادح</h1><p>لم يتم تحميل واجهة الدردشة أو الاتصال بشكل صحيح.</p></div>';
+      document.body.innerHTML = '<div style="padding: 20px; text-align: center; color: red; font-family: sans-serif;"><h1>خطأ فادح</h1><p>لم يتم تحميل واجهة الدردشة أو المصادقة بشكل صحيح.</p></div>';
     }
     return;
   }
 
+  // --- Auth State Initialization ---
+  function updateAuthStateUI() {
+      if (currentUser) {
+          signupButton?.classList.add('hidden');
+          logoutButton?.classList.remove('hidden');
+      } else {
+          signupButton?.classList.remove('hidden');
+          logoutButton?.classList.add('hidden');
+      }
+  }
+
+  function checkInitialAuthState() {
+      const loggedInUser = localStorage.getItem(LOGGED_IN_USER_KEY);
+      if (loggedInUser) {
+          currentUser = loggedInUser;
+      }
+      updateAuthStateUI();
+  }
+
+  function handleLogout() {
+      currentUser = null;
+      localStorage.removeItem(LOGGED_IN_USER_KEY);
+      updateAuthStateUI();
+  }
+  
+  checkInitialAuthState();
+
   try {
-    // تحذير: تخزين مفاتيح API مباشرة في الكود غير آمن. تم فعل ذلك بناءً على طلبك للتجربة فقط.
-    // الرجاء إزالته واستخدام متغيرات البيئة قبل النشر.
-    const apiKey = "AIzaSyAKGB7rK2n6BSXz14C3v_Vj7V8saogNM64";
+    // This is a placeholder for a real API key which should be loaded from environment variables.
+    const apiKey = "DUMMY_API_KEY";
     if (!apiKey) {
       throw new Error("لم يتم العثور على مفتاح API.");
     }
@@ -364,30 +426,140 @@ function initializeChat() {
       callScreen!.style.display = 'none';
     }
 
+    // --- Auth Modal Logic ---
+    function updateAuthModalView() {
+        if (isLoginMode) {
+            authModalTitle!.textContent = 'تسجيل الدخول';
+            authModalDescription!.textContent = 'مرحباً بعودتك! سجل الدخول للمتابعة.';
+            authSubmitButton!.textContent = 'متابعة';
+            confirmPasswordWrapper!.classList.add('hidden');
+            confirmPasswordInput!.required = false;
+            toSignupSwitch!.classList.remove('hidden');
+            toLoginSwitch!.classList.add('hidden');
+        } else {
+            authModalTitle!.textContent = 'إنشاء حساب جديد';
+            authModalDescription!.textContent = 'أنشئ حساباً لحفظ سجل محادثاتك.';
+            authSubmitButton!.textContent = 'إنشاء حساب';
+            confirmPasswordWrapper!.classList.remove('hidden');
+            confirmPasswordInput!.required = true;
+            toSignupSwitch!.classList.add('hidden');
+            toLoginSwitch!.classList.remove('hidden');
+        }
+    }
+
+    function showAuthModal() {
+        isLoginMode = true; // Default to login mode
+        updateAuthModalView();
+        authModalBackdrop?.classList.remove('hidden');
+        authModal?.classList.remove('hidden');
+        setTimeout(() => {
+            authModalBackdrop?.classList.add('show');
+            authModal?.classList.add('show');
+        }, 10);
+    }
+    
+    function hideAuthModal() {
+        authModalBackdrop?.classList.remove('show');
+        authModal?.classList.remove('show');
+        setTimeout(() => {
+            authModalBackdrop?.classList.add('hidden');
+            authModal?.classList.add('hidden');
+            authForm?.reset(); // Clear form on close
+        }, 300); // Match CSS transition duration
+    }
+
 
     // --- Event Listeners ---
-    chatForm.addEventListener('submit', handleSendMessage);
-    chatInput.addEventListener('input', updateSendButtonState);
-    sendButton.addEventListener('click', () => {
-        if (chatInput.value.trim() === '') {
+    chatForm!.addEventListener('submit', handleSendMessage);
+    chatInput!.addEventListener('input', updateSendButtonState);
+    sendButton!.addEventListener('click', () => {
+        if (chatInput!.value.trim() === '') {
             startCall();
         }
     });
-    endCallButton.addEventListener('click', endCall);
-
-    // --- Dropdown Menu Logic ---
-    menuButton.addEventListener('click', (e) => {
-      e.stopPropagation(); // prevent window listener from closing it immediately
-      voiceMenu.classList.toggle('show');
+    endCallButton!.addEventListener('click', endCall);
+    
+    // Auth Listeners
+    signupButton!.addEventListener('click', showAuthModal);
+    logoutButton!.addEventListener('click', handleLogout);
+    authModalCloseButton!.addEventListener('click', hideAuthModal);
+    authModalBackdrop!.addEventListener('click', hideAuthModal);
+    switchToSignupLink!.addEventListener('click', (e) => {
+        e.preventDefault();
+        isLoginMode = false;
+        updateAuthModalView();
+    });
+    switchToLoginLink!.addEventListener('click', (e) => {
+        e.preventDefault();
+        isLoginMode = true;
+        updateAuthModalView();
     });
 
-    window.addEventListener('click', () => {
-      if (voiceMenu.classList.contains('show')) {
-        voiceMenu.classList.remove('show');
+    authForm!.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const email = emailInput!.value.trim();
+        const password = passwordInput!.value;
+
+        const users = JSON.parse(localStorage.getItem(USERS_STORAGE_KEY) || '{}');
+
+        if (isLoginMode) {
+            // Login Logic
+            if (users[email] && users[email] === password) {
+                currentUser = email;
+                localStorage.setItem(LOGGED_IN_USER_KEY, email);
+                updateAuthStateUI();
+                hideAuthModal();
+            } else {
+                alert('البريد الإلكتروني أو كلمة المرور غير صحيحة.');
+            }
+        } else {
+            // Signup Logic
+            const confirmPassword = confirmPasswordInput!.value;
+            if (password !== confirmPassword) {
+                alert('كلمتا المرور غير متطابقتين.');
+                return;
+            }
+            if (users[email]) {
+                alert('هذا البريد الإلكتروني مسجل بالفعل.');
+                return;
+            }
+
+            users[email] = password;
+            localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
+            
+            currentUser = email;
+            localStorage.setItem(LOGGED_IN_USER_KEY, email);
+            
+            alert('تم إنشاء الحساب بنجاح!');
+            updateAuthStateUI();
+            hideAuthModal();
+        }
+    });
+
+    window.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && authModal?.classList.contains('show')) {
+            hideAuthModal();
+        }
+    });
+
+
+    // --- Dropdown Menu Logic ---
+    menuButton!.addEventListener('click', (e) => {
+      e.stopPropagation(); // prevent window listener from closing it immediately
+      voiceMenu!.classList.toggle('show');
+    });
+
+    window.addEventListener('click', (e) => {
+      if (voiceMenu!.classList.contains('show')) {
+        // Fix: Cast the target to an element to check if it's inside the menu button
+        const target = e.target as Element;
+        if (!menuButton!.contains(target)) {
+          voiceMenu!.classList.remove('show');
+        }
       }
     });
 
-    voiceMenu.addEventListener('click', (e) => {
+    voiceMenu!.addEventListener('click', (e) => {
       e.stopPropagation(); // prevent window listener from closing it
       const target = e.target as HTMLElement;
       // Fix: Cast the result of closest() to HTMLElement to access the dataset property.
@@ -400,7 +572,7 @@ function initializeChat() {
         menuItem.classList.add('selected-voice');
 
         // Close menu
-        voiceMenu.classList.remove('show');
+        voiceMenu!.classList.remove('show');
       }
     });
 

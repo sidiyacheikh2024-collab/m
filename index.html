@@ -17,7 +17,10 @@
 <body>
   <div id="chat-container">
     <div id="chat-header">
-      <div class="header-placeholder"></div>
+      <div class="auth-controls">
+        <button id="signup-button" class="header-button">تسجيل</button>
+        <button id="logout-button" class="header-button hidden">تسجيل الخروج</button>
+      </div>
       <h1>دردشة الذكاء الاصطناعي</h1>
       <button id="menu-button" aria-label="قائمة الخيارات">
         <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="currentColor"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg>
@@ -52,6 +55,25 @@
       <p id="call-transcript-text"></p>
     </div>
     <button id="end-call-button">إنهاء المكالمة</button>
+  </div>
+
+  <div id="auth-modal-backdrop" class="hidden"></div>
+  <div id="auth-modal" class="hidden">
+    <button id="auth-modal-close-button" aria-label="إغلاق">&times;</button>
+    <h2 id="auth-modal-title">تسجيل الدخول</h2>
+    <p id="auth-modal-description">أنشئ حساباً لحفظ سجل محادثاتك.</p>
+    <form id="auth-form" novalidate>
+      <input type="email" id="email-input" placeholder="البريد الإلكتروني" required>
+      <input type="password" id="password-input" placeholder="كلمة المرور" required>
+      <div id="confirm-password-wrapper" class="hidden">
+          <input type="password" id="confirm-password" placeholder="تأكيد كلمة المرور">
+      </div>
+      <button type="submit" id="auth-submit-button">متابعة</button>
+    </form>
+    <div class="auth-switch-container">
+        <p id="to-signup-switch" class="auth-switch">ليس لديك حساب؟ <a href="#" id="switch-to-signup">إنشاء حساب</a></p>
+        <p id="to-login-switch" class="auth-switch hidden">لديك حساب بالفعل؟ <a href="#" id="switch-to-login">تسجيل الدخول</a></p>
+    </div>
   </div>
 
   <script type="module" src="/index.tsx"></script>

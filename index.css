@@ -63,15 +63,31 @@ html, body {
   fill: var(--text-color);
 }
 
-.header-placeholder {
-  width: 40px; /* Match menu-button's effective width */
+.auth-controls {
+  z-index: 2; /* Ensure it's above the centered title */
+}
+
+.header-button {
+  background-color: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-color);
+  padding: 6px 14px;
+  font-size: 0.9rem;
+  border-radius: 20px;
+  cursor: pointer;
+  transition: background-color 0.2s, border-color 0.2s;
+}
+
+.header-button:hover {
+  background-color: var(--surface-color);
+  border-color: var(--primary-color);
 }
 
 .dropdown-menu {
   display: block; /* Visibility controlled by opacity/transform */
   position: absolute;
   top: 90%;
-  right: 15px; /* Aligns with menu button on the right */
+  left: 15px; /* Aligns with menu button on the left */
   background-color: #2a2a2a;
   border: 1px solid var(--border-color);
   border-radius: 8px;
@@ -81,7 +97,7 @@ html, body {
   padding: 8px;
   opacity: 0;
   transform: translateY(-10px) scale(0.95);
-  transform-origin: top right;
+  transform-origin: top left;
   pointer-events: none;
   transition: opacity 0.15s ease-out, transform 0.15s ease-out;
 }
@@ -340,4 +356,136 @@ html, body {
 
 #end-call-button:hover {
   background-color: #b00020;
+}
+
+/* --- Auth Modal Styles --- */
+.hidden {
+  display: none !important;
+}
+
+#auth-modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.6);
+  z-index: 1000;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+#auth-modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.95);
+  width: 90%;
+  max-width: 400px;
+  background-color: var(--surface-color);
+  border-radius: 12px;
+  box-shadow: 0 5px 20px rgba(0,0,0,0.4);
+  padding: 25px 30px;
+  z-index: 1001;
+  box-sizing: border-box;
+  text-align: center;
+  opacity: 0;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+#auth-modal-backdrop.show, #auth-modal.show {
+  opacity: 1;
+}
+#auth-modal.show {
+  transform: translate(-50%, -50%) scale(1);
+}
+
+#auth-modal-close-button {
+  position: absolute;
+  top: 10px;
+  left: 10px; /* RTL */
+  background: none;
+  border: none;
+  font-size: 1.8rem;
+  color: var(--text-color);
+  opacity: 0.6;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+
+#auth-modal h2 {
+  margin-top: 0;
+  margin-bottom: 10px;
+  color: var(--primary-color);
+}
+
+#auth-modal p {
+  margin-top: 0;
+  margin-bottom: 25px;
+  opacity: 0.8;
+}
+
+#auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+#auth-form input {
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background-color: var(--background-color);
+  color: var(--text-color);
+  font-size: 1rem;
+  outline: none;
+  text-align: right;
+  width: 100%;
+  box-sizing: border-box;
+}
+#auth-form input:focus {
+  border-color: var(--primary-color);
+}
+
+#auth-form button {
+  padding: 12px;
+  border: none;
+  border-radius: 8px;
+  background-color: var(--primary-color);
+  color: black;
+  font-size: 1rem;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+#auth-form button:hover {
+  background-color: var(--primary-variant-color);
+  color: white;
+}
+
+#confirm-password-wrapper {
+  margin: 0;
+  padding: 0;
+}
+
+.auth-switch-container {
+  margin-top: 20px;
+}
+
+.auth-switch {
+  font-size: 0.9rem;
+  opacity: 0.8;
+  margin: 0;
+}
+
+.auth-switch a {
+  color: var(--primary-color);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.auth-switch a:hover {
+  text-decoration: underline;
 }
