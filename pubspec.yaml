@@ -1,20 +1,19 @@
-name: ai_chat_hassaniya_dart
-description: An AI chat application rewritten in Dart and Flutter.
+name: ai_chat_hassaniya
+description: "An AI chat application built with Flutter, speaking the Hassaniya dialect."
 publish_to: 'none' 
 
 version: 1.0.0+1
 
 environment:
-  sdk: '>=3.2.0 <4.0.0'
+  sdk: '>=3.3.0 <4.0.0'
 
 dependencies:
   flutter:
     sdk: flutter
   flutter_localizations:
     sdk: flutter
-  http: ^1.2.0
-  flutter_markdown: ^0.7.0
-
+  http: ^1.2.1
+  flutter_markdown: ^0.7.1
 
 dev_dependencies:
   flutter_test:
