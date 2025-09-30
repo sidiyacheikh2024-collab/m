@@ -36,12 +36,6 @@ function scrollToBottom() {
   }
 }
 
-function showError(message: string) {
-    appendMessage(message, 'ai');
-    if (chatInput) chatInput.disabled = true;
-    if (sendButton) sendButton.disabled = true;
-}
-
 
 // --- Main Application Logic ---
 function initializeChat() {
@@ -56,8 +50,8 @@ function initializeChat() {
 
   try {
     const apiKey = process.env.API_KEY;
-    if (!apiKey) {
-      throw new Error("لم يتم العثور على مفتاح API. يرجى إعداده في متغيرات البيئة الخاصة بالنشر (VITE_API_KEY).");
+    if (!apiKey || apiKey === 'undefined') {
+      throw new Error("لم يتم العثور على مفتاح API. يرجى التأكد من تعيين متغير البيئة VITE_API_KEY في إعدادات النشر الخاصة بك.");
     }
 
     const ai = new GoogleGenAI({ apiKey });
@@ -158,7 +152,15 @@ function initializeChat() {
   } catch (error) {
       console.error(error);
       const errorMessage = (error instanceof Error) ? error.message : "حدث خطأ غير معروف أثناء التهيئة.";
-      showError(`حدث خطأ: ${errorMessage}`);
+      if (chatContainer) {
+          chatContainer.innerHTML = `
+              <div style="padding: 20px; text-align: center; color: #ffcccc; font-family: sans-serif; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100%;">
+                  <h1 style="color: #ff8080;">خطأ في الإعداد</h1>
+                  <p style="font-size: 1.1rem; max-width: 600px;">${errorMessage}</p>
+                  <p style="margin-top: 20px; font-size: 0.9rem; color: #aaa;">إذا كنت مالك هذا الموقع، فهذا يعني عادةً أنك بحاجة إلى تعيين متغير VITE_API_KEY في إعدادات النشر (مثل Netlify أو Vercel).</p>
+              </div>
+          `;
+      }
   }
 }
 
