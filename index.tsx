@@ -49,9 +49,17 @@ function initializeChat() {
   }
 
   try {
-    const apiKey = process.env.API_KEY;
-    if (!apiKey || apiKey === 'undefined') {
-      throw new Error("لم يتم العثور على مفتاح API. يرجى التأكد من تعيين متغير البيئة VITE_API_KEY في إعدادات النشر الخاصة بك.");
+    // --------------------------------------------------------------------------
+    // تحذير أمني هام
+    // تم وضع مفتاح API هنا بشكل مؤقت لأغراض التجربة فقط بناءً على طلبك.
+    // **لا تقم أبداً** بنشر التطبيق وبهذا المفتاح! يمكن لأي شخص رؤيته واستخدام
+    // حصتك من الـ API، مما قد يؤدي إلى تكاليف غير متوقعة.
+    // الطريقة الصحيحة هي استخدام متغيرات البيئة (environment variables).
+    const apiKey = "AIzaSyAKGB7rK2n6BSXz14C3v_Vj7V8saogNM64";
+    // --------------------------------------------------------------------------
+
+    if (!apiKey) {
+      throw new Error("لم يتم العثور على مفتاح API. يرجى التأكد من تعيينه بشكل صحيح.");
     }
 
     const ai = new GoogleGenAI({ apiKey });
@@ -157,7 +165,6 @@ function initializeChat() {
               <div style="padding: 20px; text-align: center; color: #ffcccc; font-family: sans-serif; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100%;">
                   <h1 style="color: #ff8080;">خطأ في الإعداد</h1>
                   <p style="font-size: 1.1rem; max-width: 600px;">${errorMessage}</p>
-                  <p style="margin-top: 20px; font-size: 0.9rem; color: #aaa;">إذا كنت مالك هذا الموقع، فهذا يعني عادةً أنك بحاجة إلى تعيين متغير VITE_API_KEY في إعدادات النشر (مثل Netlify أو Vercel).</p>
               </div>
           `;
       }
