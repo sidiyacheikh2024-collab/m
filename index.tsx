@@ -1,4 +1,5 @@
-import { GoogleGenAI, Chat } from "@google/genai";
+// Fix: Removed non-existent 'LiveSession' type from import.
+import { GoogleGenAI, Chat, LiveServerMessage, Modality, Blob } from "@google/genai";
 
 // --- DOM Element Selection ---
 const chatContainer = document.getElementById('chat-container') as HTMLDivElement | null;
@@ -6,6 +7,23 @@ const chatMessages = document.getElementById('chat-messages') as HTMLDivElement 
 const chatForm = document.getElementById('chat-form') as HTMLFormElement | null;
 const chatInput = document.getElementById('chat-input') as HTMLInputElement | null;
 const sendButton = document.getElementById('send-button') as HTMLButtonElement | null;
+const callScreen = document.getElementById('call-screen') as HTMLDivElement | null;
+const callStatus = document.getElementById('call-status') as HTMLDivElement | null;
+const endCallButton = document.getElementById('end-call-button') as HTMLButtonElement | null;
+
+// --- SVG Icons ---
+const sendIconSVG = `<svg class="send-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path></svg>`;
+const callIconSVG = `<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="currentColor"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M20.01 15.38c-1.23 0-2.42-.2-3.53-.56-.35-.12-.74-.03-1.01.24l-1.57 1.97c-2.83-1.35-5.21-3.73-6.56-6.56l1.97-1.57c.27-.27.35-.66.24-1.01-.37-1.11-.56-2.3-.56-3.53 0-.54-.45-.99-.99-.99H4.19C3.65 3 3 3.24 3 3.99 3 13.28 10.72 21 20.01 21c.75 0 .99-.65.99-1.19v-2.43c0-.54-.45-.99-.99-.99z"/></svg>`;
+
+// --- Live Call State ---
+// Fix: The 'LiveSession' type is not exported. Using 'any' as a workaround.
+let sessionPromise: Promise<any> | null = null;
+let mediaStream: MediaStream | null = null;
+let inputAudioContext: AudioContext | null = null;
+let outputAudioContext: AudioContext | null = null;
+let scriptProcessor: ScriptProcessorNode | null = null;
+let nextStartTime = 0;
+const sources = new Set<AudioBufferSourceNode>();
 
 
 // --- Helper Functions ---
@@ -36,37 +54,271 @@ function scrollToBottom() {
   }
 }
 
+function updateSendButtonState() {
+    if (!chatInput || !sendButton) return;
+    const hasText = chatInput.value.trim() !== '';
+    if (hasText) {
+        sendButton.innerHTML = sendIconSVG;
+        sendButton.setAttribute('aria-label', 'إرسال الرسالة');
+        sendButton.type = 'submit';
+    } else {
+        sendButton.innerHTML = callIconSVG;
+        sendButton.setAttribute('aria-label', 'بدء مكالمة');
+        sendButton.type = 'button';
+    }
+}
+
+// --- Audio Encoding/Decoding Helpers ---
+function encode(bytes: Uint8Array) {
+    let binary = '';
+    const len = bytes.byteLength;
+    for (let i = 0; i < len; i++) {
+        binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary);
+}
+
+function decode(base64: string) {
+    const binaryString = atob(base64);
+    const len = binaryString.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes;
+}
+
+async function decodeAudioData(
+    data: Uint8Array,
+    ctx: AudioContext,
+    sampleRate: number,
+    numChannels: number,
+): Promise<AudioBuffer> {
+    const dataInt16 = new Int16Array(data.buffer);
+    const frameCount = dataInt16.length / numChannels;
+    const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
+
+    for (let channel = 0; channel < numChannels; channel++) {
+        const channelData = buffer.getChannelData(channel);
+        for (let i = 0; i < frameCount; i++) {
+            channelData[i] = dataInt16[i * numChannels + channel] / 32768.0;
+        }
+    }
+    return buffer;
+}
+
+function createBlob(data: Float32Array): Blob {
+    const l = data.length;
+    const int16 = new Int16Array(l);
+    for (let i = 0; i < l; i++) {
+        int16[i] = data[i] * 32768;
+    }
+    return {
+        data: encode(new Uint8Array(int16.buffer)),
+        mimeType: 'audio/pcm;rate=16000',
+    };
+}
+
 
 // --- Main Application Logic ---
 function initializeChat() {
-  // Ensure all necessary HTML elements are present before running the app
-  if (!chatContainer || !chatMessages || !chatForm || !chatInput || !sendButton) {
-    console.error('Fatal Error: One or more essential chat elements are missing from the DOM.');
+  if (!chatContainer || !chatMessages || !chatForm || !chatInput || !sendButton || !callScreen || !callStatus || !endCallButton) {
+    console.error('Fatal Error: One or more essential chat/call elements are missing from the DOM.');
     if (document.body) {
-      document.body.innerHTML = '<div style="padding: 20px; text-align: center; color: red; font-family: sans-serif;"><h1>خطأ فادح</h1><p>لم يتم تحميل واجهة الدردشة بشكل صحيح. يرجى التأكد من أن ملف index.html سليم وأن الملفات غير الضرورية قد تم حذفها.</p></div>';
+      document.body.innerHTML = '<div style="padding: 20px; text-align: center; color: red; font-family: sans-serif;"><h1>خطأ فادح</h1><p>لم يتم تحميل واجهة الدردشة أو الاتصال بشكل صحيح.</p></div>';
     }
     return;
   }
 
   try {
-    // --------------------------------------------------------------------------
-    // تحذير أمني هام
-    // تم وضع مفتاح API هنا بشكل مؤقت لأغراض التجربة فقط بناءً على طلبك.
-    // **لا تقم أبداً** بنشر التطبيق وبهذا المفتاح! يمكن لأي شخص رؤيته واستخدام
-    // حصتك من الـ API، مما قد يؤدي إلى تكاليف غير متوقعة.
-    // الطريقة الصحيحة هي استخدام متغيرات البيئة (environment variables).
-    const apiKey = "AIzaSyAKGB7rK2n6BSXz14C3v_Vj7V8saogNM64";
-    // --------------------------------------------------------------------------
-
+    // Fix: API key must be retrieved from environment variables.
+    const apiKey = process.env.API_KEY;
     if (!apiKey) {
-      throw new Error("لم يتم العثور على مفتاح API. يرجى التأكد من تعيينه بشكل صحيح.");
+      throw new Error("لم يتم العثور على مفتاح API.");
     }
-
     const ai = new GoogleGenAI({ apiKey });
+    
+    // --- Text Chat Logic ---
     const chat: Chat = ai.chats.create({
       model: 'gemini-2.5-flash',
-      config: {
-        systemInstruction: `أنت مساعد ذكي باللهجة الحسانية. تتحدث وتفهم وتجيب باللهجة الحسانية الأصيلة فقط. 
+      config: { systemInstruction: getSystemInstruction() },
+    });
+
+    async function handleSendMessage(event: Event) {
+      event.preventDefault();
+      const userMessage = chatInput!.value.trim();
+      if (!userMessage) return;
+    
+      appendMessage(userMessage, 'user');
+      chatInput!.value = '';
+      updateSendButtonState();
+      
+      const loadingIndicator = createLoadingIndicator();
+      if (!loadingIndicator) return;
+    
+      try {
+        const responseStream = await chat.sendMessageStream({ message: userMessage });
+        let aiMessageDiv: HTMLDivElement | null = null;
+        let accumulatedText = '';
+    
+        for await (const chunk of responseStream) {
+            const chunkText = chunk.text;
+            if (chunkText) {
+                accumulatedText += chunkText;
+                if (!aiMessageDiv) {
+                    chatMessages!.removeChild(loadingIndicator);
+                    aiMessageDiv = appendMessage('', 'ai');
+                }
+                if (aiMessageDiv) {
+                  aiMessageDiv.textContent = accumulatedText;
+                  scrollToBottom();
+                }
+            }
+        }
+        if (!aiMessageDiv) {
+            chatMessages!.removeChild(loadingIndicator);
+        }
+      } catch (error) {
+        console.error(error);
+        chatMessages!.removeChild(loadingIndicator);
+        appendMessage("عذراً، حدث خطأ. يرجى المحاولة مرة أخرى.", 'ai');
+      }
+    }
+
+    // --- Voice Call Logic ---
+    async function startCall() {
+      try {
+        mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        callScreen!.style.display = 'flex';
+        callStatus!.textContent = 'جاري الاتصال...';
+
+        setTimeout(() => {
+            if (!mediaStream) return; // Check if call was cancelled
+            callStatus!.textContent = 'متصل';
+            initializeLiveSession(ai);
+        }, 1500);
+
+      } catch (err) {
+        console.error("Error accessing microphone:", err);
+        alert("لا يمكن الوصول إلى الميكروفون. يرجى التحقق من الأذونات.");
+      }
+    }
+
+    function initializeLiveSession(aiInstance: GoogleGenAI) {
+        // Fix: Cast window to 'any' to allow access to vendor-prefixed webkitAudioContext for broader browser compatibility.
+        inputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
+        // Fix: Cast window to 'any' to allow access to vendor-prefixed webkitAudioContext for broader browser compatibility.
+        outputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+        
+        sessionPromise = aiInstance.live.connect({
+            model: 'gemini-2.5-flash-native-audio-preview-09-2025',
+            callbacks: {
+                onopen: () => {
+                    const source = inputAudioContext!.createMediaStreamSource(mediaStream!);
+                    scriptProcessor = inputAudioContext!.createScriptProcessor(4096, 1, 1);
+                    scriptProcessor.onaudioprocess = (audioProcessingEvent) => {
+                        const inputData = audioProcessingEvent.inputBuffer.getChannelData(0);
+                        const pcmBlob = createBlob(inputData);
+                        sessionPromise!.then((session) => {
+                            session.sendRealtimeInput({ media: pcmBlob });
+                        });
+                    };
+                    source.connect(scriptProcessor);
+                    scriptProcessor.connect(inputAudioContext!.destination);
+                },
+                onmessage: async (message: LiveServerMessage) => {
+                    const base64EncodedAudioString = message.serverContent?.modelTurn?.parts[0]?.inlineData.data;
+                    if (base64EncodedAudioString) {
+                        nextStartTime = Math.max(nextStartTime, outputAudioContext!.currentTime);
+                        const audioBuffer = await decodeAudioData(
+                            decode(base64EncodedAudioString),
+                            outputAudioContext!, 24000, 1
+                        );
+                        const sourceNode = outputAudioContext!.createBufferSource();
+                        sourceNode.buffer = audioBuffer;
+                        sourceNode.connect(outputAudioContext!.destination);
+                        sourceNode.addEventListener('ended', () => { sources.delete(sourceNode); });
+                        sourceNode.start(nextStartTime);
+                        nextStartTime += audioBuffer.duration;
+                        sources.add(sourceNode);
+                    }
+                    if (message.serverContent?.interrupted) {
+                        for (const source of sources.values()) {
+                            source.stop();
+                            sources.delete(source);
+                        }
+                        nextStartTime = 0;
+                    }
+                },
+                onerror: (e: ErrorEvent) => {
+                    console.error('Live session error:', e);
+                    endCall();
+                },
+                onclose: (e: CloseEvent) => {
+                    console.debug('Live session closed');
+                    endCall();
+                },
+            },
+            config: {
+                responseModalities: [Modality.AUDIO],
+                systemInstruction: getSystemInstruction(),
+            },
+        });
+    }
+
+    function endCall() {
+      if (sessionPromise) {
+        sessionPromise.then(session => session.close());
+        sessionPromise = null;
+      }
+      if (mediaStream) {
+        mediaStream.getTracks().forEach(track => track.stop());
+        mediaStream = null;
+      }
+      if (scriptProcessor) {
+        scriptProcessor.disconnect();
+        scriptProcessor = null;
+      }
+      if (inputAudioContext) {
+        inputAudioContext.close();
+        inputAudioContext = null;
+      }
+       if (outputAudioContext) {
+        outputAudioContext.close();
+        outputAudioContext = null;
+      }
+      sources.forEach(source => source.stop());
+      sources.clear();
+      nextStartTime = 0;
+
+      callScreen!.style.display = 'none';
+    }
+
+
+    // --- Event Listeners ---
+    chatForm.addEventListener('submit', handleSendMessage);
+    chatInput.addEventListener('input', updateSendButtonState);
+    sendButton.addEventListener('click', () => {
+        if (chatInput.value.trim() === '') {
+            startCall();
+        }
+    });
+    endCallButton.addEventListener('click', endCall);
+
+    updateSendButtonState(); // Set initial state on load
+
+  } catch (error) {
+      console.error(error);
+      const errorMessage = (error instanceof Error) ? error.message : "حدث خطأ غير معروف أثناء التهيئة.";
+      if (chatContainer) {
+          chatContainer.innerHTML = `<div style="padding: 20px; text-align: center; color: #ffcccc; font-family: sans-serif; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100%;">
+                  <h1 style="color: #ff8080;">خطأ في الإعداد</h1><p style="font-size: 1.1rem; max-width: 600px;">${errorMessage}</p></div>`;
+      }
+  }
+}
+
+function getSystemInstruction(): string {
+  return `أنت مساعد ذكي باللهجة الحسانية. تتحدث وتفهم وتجيب باللهجة الحسانية الأصيلة فقط. 
 
 إرشادات مهمة:
 1. فهم السياق: اقرأ الرسالة بعناية وافهم ما يريده المستخدم حقاً
@@ -110,65 +362,7 @@ function initializeChat() {
 - "من طورك؟" (أول مرة) → "يعنيك ههه؟"
 - "من طورك؟" (إصرار) → "انا ال عدلني وصنعني وطورني هو aureluis وعندو قنات بسم aureluis_l اعل تيكتوك وقنات اعل يوتيوب aureluis_l أملي، وتوف، المهم انت شدور بضبط؟ يعني انا من صنعه aureluis"
 
-المطلوب: تفاعل طبيعي وذكي باللهجة الحسانية، مع فهم المقصود والرد المناسب حسب السياق والمفردات الجديدة.`,
-      },
-    });
-
-    async function handleSendMessage(event: Event) {
-      event.preventDefault();
-      const userMessage = chatInput!.value.trim();
-      if (!userMessage) return;
-    
-      appendMessage(userMessage, 'user');
-      chatInput!.value = '';
-      
-      const loadingIndicator = createLoadingIndicator();
-      if (!loadingIndicator) return;
-    
-      try {
-        const responseStream = await chat.sendMessageStream({ message: userMessage });
-        
-        let aiMessageDiv: HTMLDivElement | null = null;
-        let accumulatedText = '';
-    
-        for await (const chunk of responseStream) {
-            const chunkText = chunk.text;
-            if (chunkText) {
-                accumulatedText += chunkText;
-                if (!aiMessageDiv) {
-                    chatMessages!.removeChild(loadingIndicator);
-                    aiMessageDiv = appendMessage('', 'ai');
-                }
-                if (aiMessageDiv) {
-                  aiMessageDiv.textContent = accumulatedText;
-                  scrollToBottom();
-                }
-            }
-        }
-        if (!aiMessageDiv) { // Handle cases where stream is empty
-            chatMessages!.removeChild(loadingIndicator);
-        }
-      } catch (error) {
-        console.error(error);
-        chatMessages!.removeChild(loadingIndicator);
-        appendMessage("عذراً، حدث خطأ. يرجى المحاولة مرة أخرى.", 'ai');
-      }
-    }
-
-    chatForm.addEventListener('submit', handleSendMessage);
-
-  } catch (error) {
-      console.error(error);
-      const errorMessage = (error instanceof Error) ? error.message : "حدث خطأ غير معروف أثناء التهيئة.";
-      if (chatContainer) {
-          chatContainer.innerHTML = `
-              <div style="padding: 20px; text-align: center; color: #ffcccc; font-family: sans-serif; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100%;">
-                  <h1 style="color: #ff8080;">خطأ في الإعداد</h1>
-                  <p style="font-size: 1.1rem; max-width: 600px;">${errorMessage}</p>
-              </div>
-          `;
-      }
-  }
+المطلوب: تفاعل طبيعي وذكي باللهجة الحسانية، مع فهم المقصود والرد المناسب حسب السياق والمفردات الجديدة.`;
 }
 
 // Run the initialization function when the script loads

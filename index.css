@@ -7,6 +7,7 @@
   --user-bubble-color: #2c2c54;
   --ai-bubble-color: #2a2a2a;
   --border-color: #333;
+  --danger-color: #cf6679;
 }
 
 html, body {
@@ -62,13 +63,13 @@ html, body {
 .user-message {
   background-color: var(--user-bubble-color);
   color: white;
-  align-self: flex-end;
+  align-self: flex-start; /* Changed for RTL: user on right */
   border-bottom-right-radius: 4px;
 }
 
 .ai-message {
   background-color: var(--ai-bubble-color);
-  align-self: flex-start;
+  align-self: flex-end; /* Changed for RTL: AI on left */
   border-bottom-left-radius: 4px;
 }
 
@@ -106,6 +107,7 @@ html, body {
 
 #chat-form {
   display: flex;
+  flex-direction: row-reverse;
   gap: 10px;
   padding: 10px 20px;
   border-top: 1px solid var(--border-color);
@@ -147,5 +149,78 @@ html, body {
 
 #send-button svg {
   fill: white;
+}
+
+#send-button svg.send-icon {
   transform: scaleX(-1);
+}
+
+/* --- Call Screen Styles --- */
+
+#call-screen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: var(--background-color);
+  z-index: 100;
+  display: none; /* Hidden by default */
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 20px;
+  padding: 20px;
+  box-sizing: border-box;
+  text-align: center;
+}
+
+#call-status {
+  font-size: 1.2rem;
+  color: var(--text-color);
+  opacity: 0.8;
+}
+
+#call-icon-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 15px;
+}
+
+.robot-icon {
+  width: 120px;
+  height: 120px;
+  fill: var(--primary-color);
+  animation: pulse-robot 2s infinite ease-in-out;
+}
+
+@keyframes pulse-robot {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+
+#call-title {
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: var(--text-color);
+}
+
+#end-call-button {
+  position: absolute;
+  bottom: 50px;
+  background-color: var(--danger-color);
+  color: white;
+  border: none;
+  border-radius: 25px;
+  padding: 12px 24px;
+  font-size: 1rem;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+#end-call-button:hover {
+  background-color: #b00020;
 }
