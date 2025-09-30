@@ -1,14 +1,17 @@
 import { GoogleGenAI, Chat } from "@google/genai";
 
-const chatMessages = document.getElementById('chat-messages') as HTMLDivElement;
-const chatForm = document.getElementById('chat-form') as HTMLFormElement;
-const chatInput = document.getElementById('chat-input') as HTMLInputElement;
-const sendButton = document.getElementById('send-button') as HTMLButtonElement;
+// --- DOM Element Selection ---
+const chatContainer = document.getElementById('chat-container') as HTMLDivElement | null;
+const chatMessages = document.getElementById('chat-messages') as HTMLDivElement | null;
+const chatForm = document.getElementById('chat-form') as HTMLFormElement | null;
+const chatInput = document.getElementById('chat-input') as HTMLInputElement | null;
+const sendButton = document.getElementById('send-button') as HTMLButtonElement | null;
 
 
 // --- Helper Functions ---
 
-function appendMessage(text: string, sender: 'user' | 'ai') {
+function appendMessage(text: string, sender: 'user' | 'ai'): HTMLDivElement | null {
+  if (!chatMessages) return null;
   const messageDiv = document.createElement('div');
   messageDiv.classList.add('message', `${sender}-message`);
   messageDiv.textContent = text;
@@ -17,7 +20,8 @@ function appendMessage(text: string, sender: 'user' | 'ai') {
   return messageDiv;
 }
 
-function createLoadingIndicator(): HTMLDivElement {
+function createLoadingIndicator(): HTMLDivElement | null {
+    if (!chatMessages) return null;
     const messageDiv = document.createElement('div');
     messageDiv.classList.add('message', 'ai-message', 'loading-indicator');
     messageDiv.innerHTML = `<div class="dot"></div><div class="dot"></div><div class="dot"></div>`;
@@ -27,30 +31,40 @@ function createLoadingIndicator(): HTMLDivElement {
 }
 
 function scrollToBottom() {
-  chatMessages.scrollTop = chatMessages.scrollHeight;
+  if (chatMessages) {
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+  }
 }
 
 function showError(message: string) {
     appendMessage(message, 'ai');
-    chatInput.disabled = true;
-    sendButton.disabled = true;
+    if (chatInput) chatInput.disabled = true;
+    if (sendButton) sendButton.disabled = true;
 }
 
 
 // --- Main Application Logic ---
-
-try {
-  // FIX: Use process.env.API_KEY per @google/genai guidelines to resolve TypeScript error.
-  const apiKey = process.env.API_KEY;
-  if (!apiKey) {
-    throw new Error("لم يتم العثور على مفتاح API. يرجى إعداده في متغيرات البيئة الخاصة بالنشر (API_KEY).");
+function initializeChat() {
+  // Ensure all necessary HTML elements are present before running the app
+  if (!chatContainer || !chatMessages || !chatForm || !chatInput || !sendButton) {
+    console.error('Fatal Error: One or more essential chat elements are missing from the DOM.');
+    if (document.body) {
+      document.body.innerHTML = '<div style="padding: 20px; text-align: center; color: red; font-family: sans-serif;"><h1>خطأ فادح</h1><p>لم يتم تحميل واجهة الدردشة بشكل صحيح. يرجى التأكد من أن ملف index.html سليم وأن الملفات غير الضرورية قد تم حذفها.</p></div>';
+    }
+    return;
   }
 
-  const ai = new GoogleGenAI({ apiKey });
-  const chat: Chat = ai.chats.create({
-    model: 'gemini-2.5-flash',
-    config: {
-      systemInstruction: `أنت مساعد ذكي باللهجة الحسانية. تتحدث وتفهم وتجيب باللهجة الحسانية الأصيلة فقط. 
+  try {
+    const apiKey = process.env.API_KEY;
+    if (!apiKey) {
+      throw new Error("لم يتم العثور على مفتاح API. يرجى إعداده في متغيرات البيئة الخاصة بالنشر (VITE_API_KEY).");
+    }
+
+    const ai = new GoogleGenAI({ apiKey });
+    const chat: Chat = ai.chats.create({
+      model: 'gemini-2.5-flash',
+      config: {
+        systemInstruction: `أنت مساعد ذكي باللهجة الحسانية. تتحدث وتفهم وتجيب باللهجة الحسانية الأصيلة فقط. 
 
 إرشادات مهمة:
 1. فهم السياق: اقرأ الرسالة بعناية وافهم ما يريده المستخدم حقاً
@@ -95,51 +109,58 @@ try {
 - "من طورك؟" (إصرار) → "انا ال عدلني وصنعني وطورني هو aureluis وعندو قنات بسم aureluis_l اعل تيكتوك وقنات اعل يوتيوب aureluis_l أملي، وتوف، المهم انت شدور بضبط؟ يعني انا من صنعه aureluis"
 
 المطلوب: تفاعل طبيعي وذكي باللهجة الحسانية، مع فهم المقصود والرد المناسب حسب السياق والمفردات الجديدة.`,
-    },
-  });
+      },
+    });
 
-  async function handleSendMessage(event: Event) {
-    event.preventDefault();
-    const userMessage = chatInput.value.trim();
-    if (!userMessage) return;
-  
-    appendMessage(userMessage, 'user');
-    chatInput.value = '';
+    async function handleSendMessage(event: Event) {
+      event.preventDefault();
+      const userMessage = chatInput!.value.trim();
+      if (!userMessage) return;
     
-    const loadingIndicator = createLoadingIndicator();
-  
-    try {
-      const responseStream = await chat.sendMessageStream({ message: userMessage });
+      appendMessage(userMessage, 'user');
+      chatInput!.value = '';
       
-      let aiMessageDiv: HTMLDivElement | null = null;
-      let accumulatedText = '';
-  
-      for await (const chunk of responseStream) {
-          const chunkText = chunk.text;
-          if (chunkText) {
-              accumulatedText += chunkText;
-              if (!aiMessageDiv) {
-                  chatMessages.removeChild(loadingIndicator);
-                  aiMessageDiv = appendMessage('', 'ai');
-              }
-              aiMessageDiv.textContent = accumulatedText;
-              scrollToBottom();
-          }
+      const loadingIndicator = createLoadingIndicator();
+      if (!loadingIndicator) return;
+    
+      try {
+        const responseStream = await chat.sendMessageStream({ message: userMessage });
+        
+        let aiMessageDiv: HTMLDivElement | null = null;
+        let accumulatedText = '';
+    
+        for await (const chunk of responseStream) {
+            const chunkText = chunk.text;
+            if (chunkText) {
+                accumulatedText += chunkText;
+                if (!aiMessageDiv) {
+                    chatMessages!.removeChild(loadingIndicator);
+                    aiMessageDiv = appendMessage('', 'ai');
+                }
+                if (aiMessageDiv) {
+                  aiMessageDiv.textContent = accumulatedText;
+                  scrollToBottom();
+                }
+            }
+        }
+        if (!aiMessageDiv) { // Handle cases where stream is empty
+            chatMessages!.removeChild(loadingIndicator);
+        }
+      } catch (error) {
+        console.error(error);
+        chatMessages!.removeChild(loadingIndicator);
+        appendMessage("عذراً، حدث خطأ. يرجى المحاولة مرة أخرى.", 'ai');
       }
-      if (!aiMessageDiv) { // Handle cases where stream is empty
-          chatMessages.removeChild(loadingIndicator);
-      }
-    } catch (error) {
-      console.error(error);
-      chatMessages.removeChild(loadingIndicator);
-      appendMessage("عذراً، حدث خطأ. يرجى المحاولة مرة أخرى.", 'ai');
     }
+
+    chatForm.addEventListener('submit', handleSendMessage);
+
+  } catch (error) {
+      console.error(error);
+      const errorMessage = (error instanceof Error) ? error.message : "حدث خطأ غير معروف أثناء التهيئة.";
+      showError(`حدث خطأ: ${errorMessage}`);
   }
-
-  chatForm.addEventListener('submit', handleSendMessage);
-
-} catch (error) {
-    console.error(error);
-    const errorMessage = (error instanceof Error) ? error.message : "حدث خطأ غير معروف أثناء التهيئة.";
-    showError(`حدث خطأ: ${errorMessage}`);
 }
+
+// Run the initialization function when the script loads
+initializeChat();
