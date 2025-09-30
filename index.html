@@ -1,14 +1,15 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AI Chat</title>
   <link rel="stylesheet" href="index.css">
-  <script type="importmap">
+<script type="importmap">
 {
   "imports": {
-    "@google/genai": "https://esm.sh/@google/genai@^1.0.0",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.21.0",
+    "vite": "https://aistudiocdn.com/vite@^7.1.7",
     "lit/": "https://aistudiocdn.com/lit@^3.3.1/",
     "lit": "https://aistudiocdn.com/lit@^3.3.1"
   }
@@ -18,18 +19,18 @@
 <body>
   <div id="chat-container">
     <div id="chat-header">
-      <h1>AI Chat</h1>
+      <h1>دردشة الذكاء الاصطناعي</h1>
     </div>
     <div id="chat-messages"></div>
     <form id="chat-form">
-      <input type="text" id="chat-input" placeholder="Ask me anything..." autocomplete="off" required>
-      <button type="submit" id="send-button" aria-label="Send Message">
+      <input type="text" id="chat-input" placeholder="اسألني أي شي..." autocomplete="off" required>
+      <button type="submit" id="send-button" aria-label="إرسال الرسالة">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="24" height="24">
           <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path>
         </svg>
       </button>
     </form>
   </div>
-  <script type="module" src="index.tsx"></script>
+  <script type="module" src="/index.tsx"></script>
 </body>
 </html>

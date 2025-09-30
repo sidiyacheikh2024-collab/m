@@ -58,6 +58,7 @@ html, body {
   line-height: 1.5;
   word-wrap: break-word;
   white-space: pre-wrap;
+  text-align: right;
 }
 
 .user-message {
@@ -110,6 +111,7 @@ html, body {
   padding: 10px 20px;
   border-top: 1px solid var(--border-color);
   background-color: var(--background-color);
+  flex-direction: row-reverse;
 }
 
 #chat-input {
@@ -121,7 +123,7 @@ html, body {
   color: var(--text-color);
   font-size: 1rem;
   outline: none;
-  margin-right: 10px;
+  margin-left: 10px;
 }
 
 #chat-input:focus {
@@ -139,6 +141,7 @@ html, body {
   align-items: center;
   justify-content: center;
   transition: background-color 0.2s;
+  flex-shrink: 0;
 }
 
 #send-button:hover {
@@ -147,4 +150,5 @@ html, body {
 
 #send-button svg {
   fill: white;
+  transform: scaleX(-1);
 }

@@ -1,10 +1,56 @@
 import { GoogleGenAI, Chat } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-const chat: Chat = ai.chats.create({
-  model: 'gemini-2.5-flash',
-  config: {
-    systemInstruction: `أنت مساعد ذكي باللهجة الحسانية. تتحدث وتفهم وتجيب باللهجة الحسانية الأصيلة فقط. 
+const chatMessages = document.getElementById('chat-messages') as HTMLDivElement;
+const chatForm = document.getElementById('chat-form') as HTMLFormElement;
+const chatInput = document.getElementById('chat-input') as HTMLInputElement;
+const sendButton = document.getElementById('send-button') as HTMLButtonElement;
+
+
+// --- Helper Functions ---
+
+function appendMessage(text: string, sender: 'user' | 'ai') {
+  const messageDiv = document.createElement('div');
+  messageDiv.classList.add('message', `${sender}-message`);
+  messageDiv.textContent = text;
+  chatMessages.appendChild(messageDiv);
+  scrollToBottom();
+  return messageDiv;
+}
+
+function createLoadingIndicator(): HTMLDivElement {
+    const messageDiv = document.createElement('div');
+    messageDiv.classList.add('message', 'ai-message', 'loading-indicator');
+    messageDiv.innerHTML = `<div class="dot"></div><div class="dot"></div><div class="dot"></div>`;
+    chatMessages.appendChild(messageDiv);
+    scrollToBottom();
+    return messageDiv;
+}
+
+function scrollToBottom() {
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function showError(message: string) {
+    appendMessage(message, 'ai');
+    chatInput.disabled = true;
+    sendButton.disabled = true;
+}
+
+
+// --- Main Application Logic ---
+
+try {
+  // FIX: Use process.env.API_KEY per @google/genai guidelines to resolve TypeScript error.
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) {
+    throw new Error("لم يتم العثور على مفتاح API. يرجى إعداده في متغيرات البيئة الخاصة بالنشر (API_KEY).");
+  }
+
+  const ai = new GoogleGenAI({ apiKey });
+  const chat: Chat = ai.chats.create({
+    model: 'gemini-2.5-flash',
+    config: {
+      systemInstruction: `أنت مساعد ذكي باللهجة الحسانية. تتحدث وتفهم وتجيب باللهجة الحسانية الأصيلة فقط. 
 
 إرشادات مهمة:
 1. فهم السياق: اقرأ الرسالة بعناية وافهم ما يريده المستخدم حقاً
@@ -49,71 +95,51 @@ const chat: Chat = ai.chats.create({
 - "من طورك؟" (إصرار) → "انا ال عدلني وصنعني وطورني هو aureluis وعندو قنات بسم aureluis_l اعل تيكتوك وقنات اعل يوتيوب aureluis_l أملي، وتوف، المهم انت شدور بضبط؟ يعني انا من صنعه aureluis"
 
 المطلوب: تفاعل طبيعي وذكي باللهجة الحسانية، مع فهم المقصود والرد المناسب حسب السياق والمفردات الجديدة.`,
-  },
-});
+    },
+  });
 
-const chatMessages = document.getElementById('chat-messages') as HTMLDivElement;
-const chatForm = document.getElementById('chat-form') as HTMLFormElement;
-const chatInput = document.getElementById('chat-input') as HTMLInputElement;
-
-function appendMessage(text: string, sender: 'user' | 'ai') {
-  const messageDiv = document.createElement('div');
-  messageDiv.classList.add('message', `${sender}-message`);
-  messageDiv.textContent = text;
-  chatMessages.appendChild(messageDiv);
-  scrollToBottom();
-  return messageDiv;
-}
-
-function createLoadingIndicator(): HTMLDivElement {
-    const messageDiv = document.createElement('div');
-    messageDiv.classList.add('message', 'ai-message', 'loading-indicator');
-    messageDiv.innerHTML = `<div class="dot"></div><div class="dot"></div><div class="dot"></div>`;
-    chatMessages.appendChild(messageDiv);
-    scrollToBottom();
-    return messageDiv;
-}
-
-function scrollToBottom() {
-  chatMessages.scrollTop = chatMessages.scrollHeight;
-}
-
-async function handleSendMessage(event: Event) {
-  event.preventDefault();
-  const userMessage = chatInput.value.trim();
-  if (!userMessage) return;
-
-  appendMessage(userMessage, 'user');
-  chatInput.value = '';
+  async function handleSendMessage(event: Event) {
+    event.preventDefault();
+    const userMessage = chatInput.value.trim();
+    if (!userMessage) return;
   
-  const loadingIndicator = createLoadingIndicator();
-
-  try {
-    const responseStream = await chat.sendMessageStream({ message: userMessage });
+    appendMessage(userMessage, 'user');
+    chatInput.value = '';
     
-    let aiMessageDiv: HTMLDivElement | null = null;
-    let accumulatedText = '';
-
-    for await (const chunk of responseStream) {
-        const chunkText = chunk.text;
-        if (chunkText) {
-            accumulatedText += chunkText;
-            if (!aiMessageDiv) {
-                chatMessages.removeChild(loadingIndicator);
-                aiMessageDiv = appendMessage('', 'ai');
-            }
-            aiMessageDiv.textContent = accumulatedText;
-            scrollToBottom();
-        }
+    const loadingIndicator = createLoadingIndicator();
+  
+    try {
+      const responseStream = await chat.sendMessageStream({ message: userMessage });
+      
+      let aiMessageDiv: HTMLDivElement | null = null;
+      let accumulatedText = '';
+  
+      for await (const chunk of responseStream) {
+          const chunkText = chunk.text;
+          if (chunkText) {
+              accumulatedText += chunkText;
+              if (!aiMessageDiv) {
+                  chatMessages.removeChild(loadingIndicator);
+                  aiMessageDiv = appendMessage('', 'ai');
+              }
+              aiMessageDiv.textContent = accumulatedText;
+              scrollToBottom();
+          }
+      }
+      if (!aiMessageDiv) { // Handle cases where stream is empty
+          chatMessages.removeChild(loadingIndicator);
+      }
+    } catch (error) {
+      console.error(error);
+      chatMessages.removeChild(loadingIndicator);
+      appendMessage("عذراً، حدث خطأ. يرجى المحاولة مرة أخرى.", 'ai');
     }
-    if (!aiMessageDiv) { // Handle cases where stream is empty
-        chatMessages.removeChild(loadingIndicator);
-    }
-  } catch (error) {
-    console.error(error);
-    chatMessages.removeChild(loadingIndicator);
-    appendMessage("Sorry, I encountered an error. Please try again.", 'ai');
   }
-}
 
-chatForm.addEventListener('submit', handleSendMessage);
+  chatForm.addEventListener('submit', handleSendMessage);
+
+} catch (error) {
+    console.error(error);
+    const errorMessage = (error instanceof Error) ? error.message : "حدث خطأ غير معروف أثناء التهيئة.";
+    showError(`حدث خطأ: ${errorMessage}`);
+}
