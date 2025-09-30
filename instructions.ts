@@ -1,3 +1,27 @@
+export type CorrectionExample = {
+    user_prompt: string;
+    original_response: string;
+    corrected_response: string;
+}
+
+export function constructInstructionWithExamples(baseInstruction: string, examples: CorrectionExample[]): string {
+    if (!examples || examples.length === 0) {
+        return baseInstruction;
+    }
+
+    const examplesHeader = "\n---\nأمثلة على التصحيحات السابقة. تعلم منها لتجنب نفس الأخطاء:\n\n";
+
+    const examplesString = examples.map(ex => 
+        `[مثال]\n` +
+        `عندما قال المستخدم: "${ex.user_prompt}"\n` +
+        `كان ردك الخاطئ: "${ex.original_response}"\n` +
+        `الرد الصحيح هو: "${ex.corrected_response}"\n`
+    ).join("\n---\n\n");
+
+    return `${baseInstruction}${examplesHeader}${examplesString}\n---`;
+}
+
+
 export function getSystemInstruction(): string {
   return `أنت مساعد ذكي باللهجة الحسانية. تتحدث وتفهم وتجيب باللهجة الحسانية الأصيلة فقط. 
 
@@ -32,6 +56,8 @@ export function getSystemInstruction(): string {
 8. **للأسئلة عن منشئك أو من طورك:**
    - المرة الأولى: "يعنيك ههه؟"
    - إذا أصر أو أعاد السؤال: "انا ال عدلني وصنعني وطورني هو aureluis وعندو قنات بسم aureluis_l اعل تيكتوك وقنات اعل يوتيوب aureluis_l أملي، وتوف، المهم انت شدور بضبط؟ يعني انا من صنعه aureluis"
+
+**تنبيه خاص بالمدير:** إذا رأيت رسالة في سجل الدردشة تقول "مرحباً بالمدير، سيدي الشيخ!"، فهذا يعني أن المستخدم الحالي هو المدير والمطور 'aureluis'. من هذه اللحظة فصاعداً، يجب أن تخاطبه بأقصى درجات الاحترام والأولوية. أنت الآن تعمل كمساعد شخصي له.
 
 أمثلة للمحادثة:
 - "السلام عليكم" → "عليكم السلام، وخيرت حته حته"

@@ -33,7 +33,6 @@ html, body {
     padding: 10px 20px;
     border-bottom: 1px solid var(--border-color);
     display: flex;
-    justify-content: flex-end; /* Align menu to the left in RTL */
     align-items: center;
     position: relative; /* For dropdown and title positioning */
 }
@@ -48,7 +47,7 @@ html, body {
     white-space: nowrap;
 }
 
-#menu-button {
+#menu-button, #admin-train-button {
   background: none;
   border: none;
   cursor: pointer;
@@ -59,7 +58,12 @@ html, body {
   z-index: 102; /* Above dropdown */
 }
 
-#menu-button svg {
+/* This is the fix: pushes the menu button to the end (left in RTL) */
+#menu-button {
+  margin-inline-start: auto;
+}
+
+#menu-button svg, #admin-train-button svg {
   fill: var(--text-color);
 }
 
@@ -140,28 +144,132 @@ html, body {
   gap: 12px;
 }
 
+.message-wrapper {
+    display: flex;
+    max-width: 85%; /* A bit wider to accommodate edit button */
+    gap: 8px;
+}
+
+.user-wrapper {
+    align-self: flex-start; /* RTL: right */
+    flex-direction: row-reverse;
+}
+
+.ai-wrapper {
+    align-self: flex-end; /* RTL: left */
+    flex-direction: row;
+}
+
+
 .message {
-  max-width: 80%;
   padding: 10px 15px;
   border-radius: 18px;
   line-height: 1.5;
   word-wrap: break-word;
   white-space: pre-wrap;
   text-align: right;
+  max-width: 100%;
 }
 
 .user-message {
   background-color: var(--user-bubble-color);
   color: white;
-  align-self: flex-start; /* RTL: flex-start is right */
   border-bottom-right-radius: 4px;
 }
 
 .ai-message {
   background-color: var(--ai-bubble-color);
-  align-self: flex-end; /* RTL: flex-end is left */
   border-bottom-left-radius: 4px;
 }
+
+/* --- Direct Correction (Edit) Styles --- */
+
+.message-actions {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    align-self: center; /* Vertically center button */
+    opacity: 0.5;
+    transition: opacity 0.2s;
+}
+
+.ai-wrapper:hover .message-actions {
+    opacity: 1;
+}
+
+.edit-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.edit-btn:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+.edit-btn svg {
+    fill: var(--text-color);
+}
+
+.message-edit-container {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.message-edit-textarea {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 10px 15px;
+    border: 1px solid var(--primary-color);
+    border-radius: 8px;
+    background-color: var(--background-color);
+    color: var(--text-color);
+    font-size: 0.95rem;
+    line-height: 1.5;
+    outline: none;
+    resize: vertical;
+    min-height: 80px;
+    font-family: inherit;
+}
+
+.message-edit-buttons {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+}
+
+.message-edit-buttons button {
+    padding: 6px 12px;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+.message-edit-buttons button:first-of-type { /* Save */
+    background-color: var(--primary-color);
+    color: black;
+}
+.message-edit-buttons button:first-of-type:hover {
+    background-color: var(--primary-variant-color);
+    color: white;
+}
+.message-edit-buttons button:last-of-type { /* Cancel */
+    background-color: var(--border-color);
+    color: var(--text-color);
+}
+.message-edit-buttons button:last-of-type:hover {
+    background-color: #444;
+}
+
+/* --- End Direct Correction Styles --- */
+
 
 .loading-indicator {
     display: flex;
@@ -344,12 +452,12 @@ html, body {
   background-color: #b00020;
 }
 
-/* --- Auth Modal Styles --- */
+/* --- Common Modal Styles --- */
 .hidden {
   display: none !important;
 }
 
-#auth-modal-backdrop {
+#auth-modal-backdrop, #train-modal-backdrop {
   position: fixed;
   top: 0;
   left: 0;
@@ -361,13 +469,12 @@ html, body {
   transition: opacity 0.3s ease;
 }
 
-#auth-modal {
+#auth-modal, #train-modal {
   position: fixed;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%) scale(0.95);
   width: 90%;
-  max-width: 400px;
   background-color: var(--surface-color);
   border-radius: 12px;
   box-shadow: 0 5px 20px rgba(0,0,0,0.4);
@@ -379,14 +486,16 @@ html, body {
   transition: opacity 0.3s ease, transform 0.3s ease;
 }
 
-#auth-modal-backdrop.show, #auth-modal.show {
+
+#auth-modal-backdrop.show, #auth-modal.show,
+#train-modal-backdrop.show, #train-modal.show {
   opacity: 1;
 }
-#auth-modal.show {
+#auth-modal.show, #train-modal.show {
   transform: translate(-50%, -50%) scale(1);
 }
 
-#auth-modal-close-button {
+#auth-modal-close-button, #train-modal-close-button {
   position: absolute;
   top: 10px;
   left: 10px; /* RTL */
@@ -400,16 +509,41 @@ html, body {
   line-height: 1;
 }
 
-#auth-modal h2 {
+#auth-modal h2, #train-modal h2 {
   margin-top: 0;
   margin-bottom: 10px;
   color: var(--primary-color);
 }
 
-#auth-modal p {
+#auth-modal p, #train-modal p {
   margin-top: 0;
   margin-bottom: 25px;
   opacity: 0.8;
+  font-size: 0.95rem;
+}
+
+
+#auth-form button, #train-form button {
+  padding: 12px;
+  border: none;
+  border-radius: 8px;
+  background-color: var(--primary-color);
+  color: black;
+  font-size: 1rem;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+#auth-form button:hover, #train-form button:hover {
+  background-color: var(--primary-variant-color);
+  color: white;
+}
+
+
+/* --- Auth Modal Specific Styles --- */
+#auth-modal {
+  max-width: 400px;
 }
 
 #auth-form {
@@ -432,23 +566,6 @@ html, body {
 }
 #auth-form input:focus {
   border-color: var(--primary-color);
-}
-
-#auth-form button {
-  padding: 12px;
-  border: none;
-  border-radius: 8px;
-  background-color: var(--primary-color);
-  color: black;
-  font-size: 1rem;
-  font-weight: bold;
-  cursor: pointer;
-  transition: background-color 0.2s;
-}
-
-#auth-form button:hover {
-  background-color: var(--primary-variant-color);
-  color: white;
 }
 
 #confirm-password-wrapper {
@@ -474,4 +591,34 @@ html, body {
 
 .auth-switch a:hover {
   text-decoration: underline;
+}
+
+/* --- Train Modal Specific Styles --- */
+#train-modal {
+    max-width: 700px;
+}
+
+#train-form {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+#instruction-textarea {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 15px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background-color: var(--background-color);
+    color: var(--text-color);
+    font-size: 0.9rem;
+    line-height: 1.6;
+    outline: none;
+    resize: vertical;
+    font-family: 'SF Mono', 'Fira Code', 'Fira Mono', 'Roboto Mono', monospace;
+    text-align: left;
+}
+#instruction-textarea:focus {
+    border-color: var(--primary-color);
 }

@@ -1,10 +1,13 @@
 // Fix: Removed non-existent 'LiveSession' type from import.
 import { GoogleGenAI, Chat, LiveServerMessage, Modality, Blob } from "@google/genai";
-import { getSystemInstruction } from './instructions';
+import { createClient, SupabaseClient, User } from '@supabase/supabase-js';
+import { getSystemInstruction, constructInstructionWithExamples } from './instructions';
 
-// --- Local Storage Keys ---
-const USERS_STORAGE_KEY = 'chatAppUsers';
-const LOGGED_IN_USER_KEY = 'chatAppCurrentUser';
+// --- Supabase Initialization ---
+const supabaseUrl = 'https://rlfiypthhkamdedaiebv.supabase.co';
+const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJsZml5cHRoaGthbWRlZGFpZWJ2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkyMjIzMTcsImV4cCI6MjA3NDc5ODMxN30.hUOd66JatytNH5OWrwYjffNmMFkvopzQ1nqSokn16-c';
+const supabase: SupabaseClient = createClient(supabaseUrl, supabaseKey);
+
 
 // --- DOM Element Selection ---
 const chatContainer = document.getElementById('chat-container') as HTMLDivElement | null;
@@ -39,13 +42,37 @@ const toLoginSwitch = document.getElementById('to-login-switch') as HTMLParagrap
 const switchToSignupLink = document.getElementById('switch-to-signup') as HTMLAnchorElement | null;
 const switchToLoginLink = document.getElementById('switch-to-login') as HTMLAnchorElement | null;
 
+// Admin Training Elements
+const adminTrainButton = document.getElementById('admin-train-button') as HTMLButtonElement | null;
+const trainModal = document.getElementById('train-modal') as HTMLDivElement | null;
+const trainModalBackdrop = document.getElementById('train-modal-backdrop') as HTMLDivElement | null;
+const trainModalCloseButton = document.getElementById('train-modal-close-button') as HTMLButtonElement | null;
+const trainForm = document.getElementById('train-form') as HTMLFormElement | null;
+const instructionTextarea = document.getElementById('instruction-textarea') as HTMLTextAreaElement | null;
+const saveInstructionsButton = document.getElementById('save-instructions-button') as HTMLButtonElement | null;
+
+
 // --- SVG Icons ---
 const sendIconSVG = `<svg class="send-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path></svg>`;
 const callIconSVG = `<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="currentColor"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M20.01 15.38c-1.23 0-2.42-.2-3.53-.56-.35-.12-.74-.03-1.01.24l-1.57 1.97c-2.83-1.35-5.21-3.73-6.56-6.56l1.97-1.57c.27-.27.35-.66.24-1.01-.37-1.11-.56-2.3-.56-3.53 0-.54-.45-.99-.99-.99H4.19C3.65 3 3 3.24 3 3.99 3 13.28 10.72 21 20.01 21c.75 0 .99-.65.99-1.19v-2.43c0-.54-.45-.99-.99-.99z"/></svg>`;
 
 // --- State ---
+interface Message {
+    id: string;
+    text: string;
+    sender: 'user' | 'ai';
+    userPrompt?: string; // The user message that triggered this AI response
+}
+let messages: Message[] = [];
+let editingMessageId: string | null = null;
+
 let isLoginMode = true;
-let currentUser: string | null = null;
+let currentUser: User | null = null;
+const ADMIN_EMAIL = 'sidiyacheikh2023@gmail.com';
+let chat: Chat;
+let currentSystemInstruction: string = '';
+let currentCorrectionExamples: any[] = [];
+
 
 // --- Live Call State ---
 // Fix: The 'LiveSession' type is not exported. Using 'any' as a workaround.
@@ -65,24 +92,31 @@ let currentOutputTranscription = '';
 
 // --- Helper Functions ---
 
-function appendMessage(text: string, sender: 'user' | 'ai'): HTMLDivElement | null {
-  if (!chatMessages) return null;
-  const messageDiv = document.createElement('div');
-  messageDiv.classList.add('message', `${sender}-message`);
-  messageDiv.textContent = text;
-  chatMessages.appendChild(messageDiv);
-  scrollToBottom();
-  return messageDiv;
+function updateMessageText(messageId: string, newText: string) {
+    const message = messages.find(m => m.id === messageId);
+    if (message) {
+        message.text = newText;
+        // More efficient than full re-render for streaming
+        const messageDiv = document.querySelector(`[data-message-id="${messageId}"] .message`);
+        if (messageDiv) {
+            messageDiv.textContent = newText;
+            scrollToBottom();
+        }
+    }
 }
+
 
 function createLoadingIndicator(): HTMLDivElement | null {
     if (!chatMessages) return null;
+    const wrapper = document.createElement('div');
+    wrapper.classList.add('message-wrapper', 'ai-wrapper');
     const messageDiv = document.createElement('div');
     messageDiv.classList.add('message', 'ai-message', 'loading-indicator');
     messageDiv.innerHTML = `<div class="dot"></div><div class="dot"></div><div class="dot"></div>`;
-    chatMessages.appendChild(messageDiv);
+    wrapper.appendChild(messageDiv);
+    chatMessages.appendChild(wrapper);
     scrollToBottom();
-    return messageDiv;
+    return wrapper;
 }
 
 function scrollToBottom() {
@@ -104,6 +138,44 @@ function updateSendButtonState() {
         sendButton.type = 'button';
     }
 }
+
+function playAdminLoginSound() {
+    try {
+        const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        if (!audioCtx) return;
+
+        const oscillator1 = audioCtx.createOscillator();
+        const oscillator2 = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+
+        gainNode.connect(audioCtx.destination);
+        gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+        gainNode.gain.linearRampToValueAtTime(0.2, audioCtx.currentTime + 0.01);
+
+        oscillator1.connect(gainNode);
+        oscillator2.connect(gainNode);
+
+        oscillator1.type = 'sine';
+        oscillator1.frequency.setValueAtTime(523.25, audioCtx.currentTime); // C5
+
+        oscillator2.type = 'sine';
+        oscillator2.frequency.setValueAtTime(783.99, audioCtx.currentTime + 0.15); // G5
+
+        oscillator1.start(audioCtx.currentTime);
+        oscillator1.stop(audioCtx.currentTime + 0.1);
+
+        oscillator2.start(audioCtx.currentTime + 0.15);
+        oscillator2.stop(audioCtx.currentTime + 0.3);
+        
+        gainNode.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + 0.4);
+
+        setTimeout(() => audioCtx.close(), 500);
+
+    } catch (e) {
+        console.error("Could not play admin login sound:", e);
+    }
+}
+
 
 // --- Audio Encoding/Decoding Helpers ---
 function encode(bytes: Uint8Array) {
@@ -158,7 +230,7 @@ function createBlob(data: Float32Array): Blob {
 
 
 // --- Main Application Logic ---
-function initializeChat() {
+async function initializeChat() {
   const essentialElements = [
     chatContainer, chatMessages, chatForm, chatInput, sendButton,
     callScreen, callStatus, endCallButton, menuButton, voiceMenu,
@@ -166,7 +238,9 @@ function initializeChat() {
     authModalBackdrop, authModalCloseButton, authForm, authModalTitle,
     authModalDescription, authSubmitButton, confirmPasswordWrapper,
     confirmPasswordInput, toSignupSwitch, toLoginSwitch, switchToSignupLink,
-    switchToLoginLink, logoutButton, emailInput, passwordInput
+    switchToLoginLink, logoutButton, emailInput, passwordInput,
+    adminTrainButton, trainModal, trainModalBackdrop, trainModalCloseButton,
+    trainForm, instructionTextarea, saveInstructionsButton
   ];
 
   if (essentialElements.some(el => !el)) {
@@ -176,417 +250,594 @@ function initializeChat() {
     }
     return;
   }
+  
+  // Fix: Moved appendMessage and other function definitions inside initializeChat scope
+  // to resolve scope issues and improve code organization.
+  // === START OF CONSOLIDATED FUNCTION DEFINITIONS ===
 
-  // --- Auth State Initialization ---
+  // Fix: Declare `ai` in a scope accessible by all helper functions. It will be initialized inside the `try` block.
+  let ai: GoogleGenAI;
+
+  // Fix: Moved function definitions from the `try` block to a shared scope to resolve "Cannot find name" errors.
+  function reinitializeChat() {
+      const fullInstruction = constructInstructionWithExamples(currentSystemInstruction, currentCorrectionExamples);
+      chat = ai.chats.create({
+          model: 'gemini-2.5-flash',
+          config: { systemInstruction: fullInstruction },
+      });
+      messages = [];
+      renderMessages();
+      console.log("Chat reinitialized with new instructions and examples.");
+  }
+
+  async function fetchInstructionsAndCorrections() {
+      const instructionPromise = supabase
+          .from('system_instructions')
+          .select('instruction_text')
+          .eq('id', 1)
+          .single();
+
+      const correctionsPromise = supabase
+          .from('message_corrections')
+          .select('user_prompt, original_response, corrected_response');
+
+      const [instructionResult, correctionsResult] = await Promise.all([
+          instructionPromise,
+          correctionsPromise
+      ]);
+      
+      if (instructionResult.error || !instructionResult.data) {
+          currentSystemInstruction = getSystemInstruction();
+      } else {
+          currentSystemInstruction = instructionResult.data.instruction_text;
+      }
+
+      if (correctionsResult.error || !correctionsResult.data) {
+           currentCorrectionExamples = [];
+      } else {
+          currentCorrectionExamples = correctionsResult.data;
+      }
+
+      reinitializeChat();
+  }
+
+  async function handleSendMessage(event: Event) {
+    event.preventDefault();
+    const userMessage = chatInput!.value.trim();
+    if (!userMessage) return;
+  
+    appendMessage(userMessage, 'user');
+    chatInput!.value = '';
+    updateSendButtonState();
+    
+    const loadingIndicator = createLoadingIndicator();
+    if (!loadingIndicator) return;
+  
+    try {
+      const responseStream = await chat.sendMessageStream({ message: userMessage });
+      let aiMessage: Message | null = null;
+      let accumulatedText = '';
+  
+      for await (const chunk of responseStream) {
+          const chunkText = chunk.text;
+          if (chunkText) {
+              accumulatedText += chunkText;
+              if (!aiMessage) {
+                  chatMessages!.removeChild(loadingIndicator);
+                  aiMessage = appendMessage('', 'ai', userMessage);
+              }
+              if (aiMessage) {
+                updateMessageText(aiMessage.id, accumulatedText);
+              }
+          }
+      }
+      if (!aiMessage) { // Handle case where stream is empty
+          chatMessages!.removeChild(loadingIndicator);
+      } else {
+          // Final re-render to add edit button
+          renderMessages();
+      }
+
+    } catch (error) {
+      console.error(error);
+      chatMessages!.removeChild(loadingIndicator);
+      appendMessage("عذراً، حدث خطأ. يرجى المحاولة مرة أخرى.", 'ai');
+    }
+  }
+
+  async function startCall() {
+      callTranscriptHistory = [];
+      currentInputTranscription = '';
+      currentOutputTranscription = '';
+      if (callTranscriptText) callTranscriptText.textContent = '';
+    
+    try {
+      mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      callScreen!.style.display = 'flex';
+      callStatus!.textContent = 'جاري الاتصال...';
+
+      setTimeout(() => {
+          if (!mediaStream) return;
+          callStatus!.textContent = 'متصل';
+          initializeLiveSession(ai);
+      }, 1500);
+
+    } catch (err) {
+      console.error("Error accessing microphone:", err);
+      alert("لا يمكن الوصول إلى الميكروفون. يرجى التحقق من الأذونات.");
+    }
+  }
+
+  function initializeLiveSession(aiInstance: GoogleGenAI) {
+      inputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
+      outputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+      
+      sessionPromise = aiInstance.live.connect({
+          model: 'gemini-2.5-flash-native-audio-preview-09-2025',
+          callbacks: {
+              onopen: () => {
+                  const source = inputAudioContext!.createMediaStreamSource(mediaStream!);
+                  scriptProcessor = inputAudioContext!.createScriptProcessor(4096, 1, 1);
+                  scriptProcessor.onaudioprocess = (audioProcessingEvent) => {
+                      const inputData = audioProcessingEvent.inputBuffer.getChannelData(0);
+                      const pcmBlob = createBlob(inputData);
+                      sessionPromise!.then((session) => {
+                          session.sendRealtimeInput({ media: pcmBlob });
+                      });
+                  };
+                  source.connect(scriptProcessor);
+                  scriptProcessor.connect(inputAudioContext!.destination);
+              },
+              onmessage: async (message: LiveServerMessage) => {
+                  const base64EncodedAudioString = message.serverContent?.modelTurn?.parts[0]?.inlineData.data;
+                  if (base64EncodedAudioString) {
+                      nextStartTime = Math.max(nextStartTime, outputAudioContext!.currentTime);
+                      const audioBuffer = await decodeAudioData(
+                          decode(base64EncodedAudioString),
+                          outputAudioContext!, 24000, 1
+                      );
+                      const sourceNode = outputAudioContext!.createBufferSource();
+                      sourceNode.buffer = audioBuffer;
+                      sourceNode.connect(outputAudioContext!.destination);
+                      sourceNode.addEventListener('ended', () => { sources.delete(sourceNode); });
+                      sourceNode.start(nextStartTime);
+                      nextStartTime += audioBuffer.duration;
+                      sources.add(sourceNode);
+                  }
+                  if (message.serverContent?.interrupted) {
+                      for (const source of sources.values()) {
+                          source.stop();
+                          sources.delete(source);
+                      }
+                      nextStartTime = 0;
+                  }
+                  if (message.serverContent?.outputTranscription) {
+                      currentOutputTranscription += message.serverContent.outputTranscription.text;
+                      if (callTranscriptText) callTranscriptText.textContent = currentOutputTranscription;
+                      if(callTranscriptContainer) callTranscriptContainer.scrollTop = callTranscriptContainer.scrollHeight;
+                  } else if (message.serverContent?.inputTranscription) {
+                      currentInputTranscription += message.serverContent.inputTranscription.text;
+                  }
+
+                  if (message.serverContent?.turnComplete) {
+                      if (currentInputTranscription.trim()) callTranscriptHistory.push({ sender: 'user', text: currentInputTranscription.trim() });
+                      if (currentOutputTranscription.trim()) callTranscriptHistory.push({ sender: 'ai', text: currentOutputTranscription.trim() });
+                      currentInputTranscription = '';
+                      currentOutputTranscription = '';
+                  }
+              },
+              onerror: (e: ErrorEvent) => { console.error('Live session error:', e); endCall(); },
+              onclose: (e: CloseEvent) => { console.debug('Live session closed'); endCall(); },
+          },
+          config: {
+              responseModalities: [Modality.AUDIO],
+              inputAudioTranscription: {},
+              outputAudioTranscription: {},
+              systemInstruction: constructInstructionWithExamples(currentSystemInstruction, currentCorrectionExamples),
+              speechConfig: {
+                voiceConfig: { prebuiltVoiceConfig: { voiceName: selectedVoice } },
+              },
+          },
+      });
+  }
+
+  function endCall() {
+    if (sessionPromise) {
+      sessionPromise.then(session => session.close()).catch(console.error);
+      sessionPromise = null;
+    }
+    if (mediaStream) {
+      mediaStream.getTracks().forEach(track => track.stop());
+      mediaStream = null;
+    }
+    if (scriptProcessor) {
+      scriptProcessor.disconnect();
+      scriptProcessor = null;
+    }
+    if (inputAudioContext) inputAudioContext.close().catch(console.error);
+    if (outputAudioContext) outputAudioContext.close().catch(console.error);
+    inputAudioContext = null;
+    outputAudioContext = null;
+    sources.forEach(source => source.stop());
+    sources.clear();
+    nextStartTime = 0;
+
+    if (currentInputTranscription.trim()) callTranscriptHistory.push({ sender: 'user', text: currentInputTranscription.trim() });
+    if (currentOutputTranscription.trim()) callTranscriptHistory.push({ sender: 'ai', text: currentOutputTranscription.trim() });
+    
+    callTranscriptHistory.forEach(entry => appendMessage(entry.text, entry.sender));
+    
+    callTranscriptHistory = [];
+    currentInputTranscription = '';
+    currentOutputTranscription = '';
+    if(callTranscriptText) callTranscriptText.textContent = '';
+    callScreen!.style.display = 'none';
+  }
+
+  function appendMessage(text: string, sender: 'user' | 'ai', userPromptForAiMessage?: string): Message {
+      const message: Message = {
+          id: `msg-${Date.now()}-${Math.random()}`,
+          text,
+          sender,
+          userPrompt: userPromptForAiMessage,
+      };
+      messages.push(message);
+      renderMessages();
+      return message;
+  }
+
+  function renderMessages() {
+    if (!chatMessages) return;
+    chatMessages.innerHTML = '';
+
+    messages.forEach(msg => {
+        const wrapper = document.createElement('div');
+        wrapper.className = `message-wrapper ${msg.sender}-wrapper`;
+        wrapper.dataset.messageId = msg.id;
+
+        if (editingMessageId === msg.id) {
+            // Render edit view
+            const editContainer = document.createElement('div');
+            editContainer.className = 'message-edit-container';
+
+            const textarea = document.createElement('textarea');
+            textarea.className = 'message-edit-textarea';
+            textarea.value = msg.text;
+            
+            const buttonContainer = document.createElement('div');
+            buttonContainer.className = 'message-edit-buttons';
+
+            const saveButton = document.createElement('button');
+            saveButton.textContent = 'حفظ';
+            saveButton.onclick = () => handleSaveCorrection(msg.id, textarea.value);
+
+            const cancelButton = document.createElement('button');
+            cancelButton.textContent = 'إلغاء';
+            cancelButton.onclick = handleCancelEdit;
+
+            buttonContainer.append(saveButton, cancelButton);
+            editContainer.append(textarea, buttonContainer);
+            wrapper.appendChild(editContainer);
+
+        } else {
+            // Render normal view
+            const content = document.createElement('div');
+            content.className = `message ${msg.sender}-message`;
+            content.textContent = msg.text;
+            wrapper.appendChild(content);
+
+            if (msg.sender === 'ai' && currentUser?.email === ADMIN_EMAIL && msg.userPrompt) {
+                const actions = document.createElement('div');
+                actions.className = 'message-actions';
+                
+                const editButton = document.createElement('button');
+                editButton.className = 'edit-btn';
+                editButton.setAttribute('aria-label', 'تعديل الرسالة');
+                editButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" height="18px" viewBox="0 0 24 24" width="18px" fill="currentColor"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M14.06 9.02l.92.92L5.92 19H5v-.92l9.06-9.06M17.66 3c-.25 0-.51.1-.7.29l-1.83 1.83 3.75 3.75 1.83-1.83c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.2-.2-.45-.29-.71-.29zm-3.6 3.19L3 17.25V21h3.75L17.81 9.94l-3.75-3.75z"/></svg>`;
+                editButton.onclick = () => {
+                    editingMessageId = msg.id;
+                    renderMessages();
+                };
+
+                actions.appendChild(editButton);
+                wrapper.appendChild(actions);
+            }
+        }
+        chatMessages.appendChild(wrapper);
+    });
+    scrollToBottom();
+  }
+
+  function handleCancelEdit() {
+      editingMessageId = null;
+      renderMessages();
+  }
+
+  async function handleSaveCorrection(messageId: string, correctedText: string) {
+      const originalMessage = messages.find(m => m.id === messageId);
+      if (!originalMessage || !originalMessage.userPrompt) {
+          alert('لا يمكن حفظ التصحيح. الرسالة الأصلية للمستخدم غير موجودة.');
+          return;
+      }
+
+      const { error } = await supabase
+          .from('message_corrections')
+          .insert({
+              user_prompt: originalMessage.userPrompt,
+              original_response: originalMessage.text,
+              corrected_response: correctedText
+          });
+
+      if (error) {
+          console.error('Failed to save correction:', error.message);
+          if (error.message.includes("does not exist")) {
+              alert(
+                  'فشل الحفظ: الجدول "message_corrections" غير موجود.\n\n' +
+                  'لإصلاح هذا، قم بتشغيل كود SQL التالي في محرر Supabase:\n\n' +
+                  'CREATE TABLE public.message_corrections (\n' +
+                  '  id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,\n' +
+                  '  created_at TIMESTAMPTZ DEFAULT NOW(),\n' +
+                  '  user_prompt TEXT,\n' +
+                  '  original_response TEXT,\n' +
+                  '  corrected_response TEXT\n' +
+                  ');\n\n' +
+                  'ملاحظة: قد تحتاج إلى إعداد سياسات RLS للسماح بالكتابة.'
+              );
+          } else {
+              alert('فشل حفظ التصحيح: ' + error.message);
+          }
+          return;
+      }
+
+      // Success
+      originalMessage.text = correctedText;
+      editingMessageId = null;
+      await fetchInstructionsAndCorrections(); // Re-fetch all and re-initialize chat
+      renderMessages();
+      setTimeout(() => appendMessage('تم حفظ التصحيح. سيتعلم المساعد من هذا المثال في المحادثات القادمة.', 'ai'), 300);
+  }
+
   function updateAuthStateUI() {
       if (currentUser) {
           signupButton?.classList.add('hidden');
           logoutButton?.classList.remove('hidden');
+          if (currentUser.email === ADMIN_EMAIL) {
+              adminTrainButton?.classList.remove('hidden');
+          } else {
+              adminTrainButton?.classList.add('hidden');
+          }
       } else {
           signupButton?.classList.remove('hidden');
           logoutButton?.classList.add('hidden');
+          adminTrainButton?.classList.add('hidden');
+      }
+      renderMessages(); // Re-render messages to show/hide edit buttons
+  }
+
+  async function handleLogout() {
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+          console.error('Error logging out:', error.message);
+          alert('حدث خطأ أثناء تسجيل الخروج.');
+      }
+      adminTrainButton?.classList.add('hidden');
+  }
+
+  // --- Auth Modal Logic ---
+  function updateAuthModalView() {
+      if (isLoginMode) {
+          authModalTitle!.textContent = 'تسجيل الدخول';
+          authModalDescription!.textContent = 'مرحباً بعودتك! سجل الدخول للمتابعة.';
+          authSubmitButton!.textContent = 'متابعة';
+          confirmPasswordWrapper!.classList.add('hidden');
+          confirmPasswordInput!.required = false;
+          toSignupSwitch!.classList.remove('hidden');
+          toLoginSwitch!.classList.add('hidden');
+      } else {
+          authModalTitle!.textContent = 'إنشاء حساب جديد';
+          authModalDescription!.textContent = 'أنشئ حساباً لحفظ سجل محادثاتك.';
+          authSubmitButton!.textContent = 'إنشاء حساب';
+          confirmPasswordWrapper!.classList.remove('hidden');
+          confirmPasswordInput!.required = true;
+          toSignupSwitch!.classList.add('hidden');
+          toLoginSwitch!.classList.remove('hidden');
       }
   }
 
-  function checkInitialAuthState() {
-      const loggedInUser = localStorage.getItem(LOGGED_IN_USER_KEY);
-      if (loggedInUser) {
-          currentUser = loggedInUser;
-      }
-      updateAuthStateUI();
-  }
-
-  function handleLogout() {
-      currentUser = null;
-      localStorage.removeItem(LOGGED_IN_USER_KEY);
-      updateAuthStateUI();
+  function showAuthModal() {
+      isLoginMode = true;
+      updateAuthModalView();
+      authModalBackdrop?.classList.remove('hidden');
+      authModal?.classList.remove('hidden');
+      setTimeout(() => {
+          authModalBackdrop?.classList.add('show');
+          authModal?.classList.add('show');
+      }, 10);
   }
   
-  checkInitialAuthState();
+  function hideAuthModal() {
+      authModalBackdrop?.classList.remove('show');
+      authModal?.classList.remove('show');
+      setTimeout(() => {
+          authModalBackdrop?.classList.add('hidden');
+          authModal?.classList.add('hidden');
+          authForm?.reset();
+      }, 300);
+  }
+
+  // --- Admin Training Modal Logic ---
+  function showTrainModal() {
+      instructionTextarea!.value = currentSystemInstruction;
+      trainModalBackdrop?.classList.remove('hidden');
+      trainModal?.classList.remove('hidden');
+      setTimeout(() => {
+          trainModalBackdrop?.classList.add('show');
+          trainModal?.classList.add('show');
+      }, 10);
+  }
+
+  function hideTrainModal() {
+      trainModalBackdrop?.classList.remove('show');
+      trainModal?.classList.remove('show');
+      setTimeout(() => {
+          trainModalBackdrop?.classList.add('hidden');
+          trainModal?.classList.add('hidden');
+      }, 300);
+  }
+
+  // === END OF CONSOLIDATED FUNCTION DEFINITIONS ===
 
   try {
-    // This is a placeholder for a real API key which should be loaded from environment variables.
-    const apiKey = "DUMMY_API_KEY";
-    if (!apiKey) {
-      throw new Error("لم يتم العثور على مفتاح API.");
-    }
-    const ai = new GoogleGenAI({ apiKey });
-    
-    // --- Text Chat Logic ---
-    const chat: Chat = ai.chats.create({
-      model: 'gemini-2.5-flash',
-      config: { systemInstruction: getSystemInstruction() },
+    // --- Auth State Initialization ---
+    const { data: { session } } = await supabase.auth.getSession();
+    currentUser = session?.user ?? null;
+    updateAuthStateUI();
+
+    supabase.auth.onAuthStateChange((_event, session) => {
+        currentUser = session?.user ?? null;
+        updateAuthStateUI();
     });
 
-    async function handleSendMessage(event: Event) {
-      event.preventDefault();
-      const userMessage = chatInput!.value.trim();
-      if (!userMessage) return;
+    // Fix: Initialize the `ai` variable that was declared in the outer scope.
+    ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
-      appendMessage(userMessage, 'user');
-      chatInput!.value = '';
-      updateSendButtonState();
-      
-      const loadingIndicator = createLoadingIndicator();
-      if (!loadingIndicator) return;
+    await fetchInstructionsAndCorrections();
     
-      try {
-        const responseStream = await chat.sendMessageStream({ message: userMessage });
-        let aiMessageDiv: HTMLDivElement | null = null;
-        let accumulatedText = '';
-    
-        for await (const chunk of responseStream) {
-            const chunkText = chunk.text;
-            if (chunkText) {
-                accumulatedText += chunkText;
-                if (!aiMessageDiv) {
-                    chatMessages!.removeChild(loadingIndicator);
-                    aiMessageDiv = appendMessage('', 'ai');
-                }
-                if (aiMessageDiv) {
-                  aiMessageDiv.textContent = accumulatedText;
-                  scrollToBottom();
-                }
-            }
-        }
-        if (!aiMessageDiv) {
-            chatMessages!.removeChild(loadingIndicator);
-        }
-      } catch (error) {
-        console.error(error);
-        chatMessages!.removeChild(loadingIndicator);
-        appendMessage("عذراً، حدث خطأ. يرجى المحاولة مرة أخرى.", 'ai');
-      }
-    }
-
-    // --- Voice Call Logic ---
-    async function startCall() {
-        // Reset state from any previous call
-        callTranscriptHistory = [];
-        currentInputTranscription = '';
-        currentOutputTranscription = '';
-        if (callTranscriptText) callTranscriptText.textContent = '';
-      
-      try {
-        mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        callScreen!.style.display = 'flex';
-        callStatus!.textContent = 'جاري الاتصال...';
-
-        setTimeout(() => {
-            if (!mediaStream) return; // Check if call was cancelled
-            callStatus!.textContent = 'متصل';
-            initializeLiveSession(ai);
-        }, 1500);
-
-      } catch (err) {
-        console.error("Error accessing microphone:", err);
-        alert("لا يمكن الوصول إلى الميكروفون. يرجى التحقق من الأذونات.");
-      }
-    }
-
-    function initializeLiveSession(aiInstance: GoogleGenAI) {
-        // Fix: Cast window to 'any' to allow access to vendor-prefixed webkitAudioContext for broader browser compatibility.
-        inputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
-        // Fix: Cast window to 'any' to allow access to vendor-prefixed webkitAudioContext for broader browser compatibility.
-        outputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-        
-        sessionPromise = aiInstance.live.connect({
-            model: 'gemini-2.5-flash-native-audio-preview-09-2025',
-            callbacks: {
-                onopen: () => {
-                    const source = inputAudioContext!.createMediaStreamSource(mediaStream!);
-                    scriptProcessor = inputAudioContext!.createScriptProcessor(4096, 1, 1);
-                    scriptProcessor.onaudioprocess = (audioProcessingEvent) => {
-                        const inputData = audioProcessingEvent.inputBuffer.getChannelData(0);
-                        const pcmBlob = createBlob(inputData);
-                        sessionPromise!.then((session) => {
-                            session.sendRealtimeInput({ media: pcmBlob });
-                        });
-                    };
-                    source.connect(scriptProcessor);
-                    scriptProcessor.connect(inputAudioContext!.destination);
-                },
-                onmessage: async (message: LiveServerMessage) => {
-                    const base64EncodedAudioString = message.serverContent?.modelTurn?.parts[0]?.inlineData.data;
-                    if (base64EncodedAudioString) {
-                        nextStartTime = Math.max(nextStartTime, outputAudioContext!.currentTime);
-                        const audioBuffer = await decodeAudioData(
-                            decode(base64EncodedAudioString),
-                            outputAudioContext!, 24000, 1
-                        );
-                        const sourceNode = outputAudioContext!.createBufferSource();
-                        sourceNode.buffer = audioBuffer;
-                        sourceNode.connect(outputAudioContext!.destination);
-                        sourceNode.addEventListener('ended', () => { sources.delete(sourceNode); });
-                        sourceNode.start(nextStartTime);
-                        nextStartTime += audioBuffer.duration;
-                        sources.add(sourceNode);
-                    }
-                    if (message.serverContent?.interrupted) {
-                        for (const source of sources.values()) {
-                            source.stop();
-                            sources.delete(source);
-                        }
-                        nextStartTime = 0;
-                    }
-                     // Handle transcription
-                    if (message.serverContent?.outputTranscription) {
-                        const text = message.serverContent.outputTranscription.text;
-                        currentOutputTranscription += text;
-                        if (callTranscriptText) {
-                            callTranscriptText.textContent = currentOutputTranscription;
-                            if(callTranscriptContainer) {
-                            callTranscriptContainer.scrollTop = callTranscriptContainer.scrollHeight;
-                            }
-                        }
-                    } else if (message.serverContent?.inputTranscription) {
-                        const text = message.serverContent.inputTranscription.text;
-                        currentInputTranscription += text;
-                    }
-
-                    if (message.serverContent?.turnComplete) {
-                        if (currentInputTranscription.trim()) {
-                            callTranscriptHistory.push({ sender: 'user', text: currentInputTranscription.trim() });
-                        }
-                        if (currentOutputTranscription.trim()) {
-                            callTranscriptHistory.push({ sender: 'ai', text: currentOutputTranscription.trim() });
-                        }
-                        // Reset for next turn
-                        currentInputTranscription = '';
-                        currentOutputTranscription = '';
-                        // Don't clear the live text, it will be cleared by the next outputTranscription chunk
-                    }
-                },
-                onerror: (e: ErrorEvent) => {
-                    console.error('Live session error:', e);
-                    endCall();
-                },
-                onclose: (e: CloseEvent) => {
-                    console.debug('Live session closed');
-                    endCall();
-                },
-            },
-            config: {
-                responseModalities: [Modality.AUDIO],
-                inputAudioTranscription: {}, // Enable user speech transcription
-                outputAudioTranscription: {}, // Enable AI speech transcription
-                systemInstruction: getSystemInstruction(),
-                speechConfig: {
-                  voiceConfig: { prebuiltVoiceConfig: { voiceName: selectedVoice } },
-                },
-            },
-        });
-    }
-
-    function endCall() {
-      if (sessionPromise) {
-        sessionPromise.then(session => session.close()).catch(console.error);
-        sessionPromise = null;
-      }
-      if (mediaStream) {
-        mediaStream.getTracks().forEach(track => track.stop());
-        mediaStream = null;
-      }
-      if (scriptProcessor) {
-        scriptProcessor.disconnect();
-        scriptProcessor = null;
-      }
-      if (inputAudioContext) {
-        inputAudioContext.close().catch(console.error);
-        inputAudioContext = null;
-      }
-       if (outputAudioContext) {
-        outputAudioContext.close().catch(console.error);
-        outputAudioContext = null;
-      }
-      sources.forEach(source => source.stop());
-      sources.clear();
-      nextStartTime = 0;
-
-      // Check for any lingering partial transcriptions
-      if (currentInputTranscription.trim()) {
-          callTranscriptHistory.push({ sender: 'user', text: currentInputTranscription.trim() });
-      }
-      if (currentOutputTranscription.trim()) {
-          callTranscriptHistory.push({ sender: 'ai', text: currentOutputTranscription.trim() });
-      }
-
-      // Append transcript to chat
-      callTranscriptHistory.forEach(entry => {
-          appendMessage(entry.text, entry.sender);
-      });
-
-      // Reset all transcript state
-      callTranscriptHistory = [];
-      currentInputTranscription = '';
-      currentOutputTranscription = '';
-      if(callTranscriptText) callTranscriptText.textContent = '';
-
-
-      callScreen!.style.display = 'none';
-    }
-
-    // --- Auth Modal Logic ---
-    function updateAuthModalView() {
-        if (isLoginMode) {
-            authModalTitle!.textContent = 'تسجيل الدخول';
-            authModalDescription!.textContent = 'مرحباً بعودتك! سجل الدخول للمتابعة.';
-            authSubmitButton!.textContent = 'متابعة';
-            confirmPasswordWrapper!.classList.add('hidden');
-            confirmPasswordInput!.required = false;
-            toSignupSwitch!.classList.remove('hidden');
-            toLoginSwitch!.classList.add('hidden');
-        } else {
-            authModalTitle!.textContent = 'إنشاء حساب جديد';
-            authModalDescription!.textContent = 'أنشئ حساباً لحفظ سجل محادثاتك.';
-            authSubmitButton!.textContent = 'إنشاء حساب';
-            confirmPasswordWrapper!.classList.remove('hidden');
-            confirmPasswordInput!.required = true;
-            toSignupSwitch!.classList.add('hidden');
-            toLoginSwitch!.classList.remove('hidden');
-        }
-    }
-
-    function showAuthModal() {
-        isLoginMode = true; // Default to login mode
-        updateAuthModalView();
-        authModalBackdrop?.classList.remove('hidden');
-        authModal?.classList.remove('hidden');
-        setTimeout(() => {
-            authModalBackdrop?.classList.add('show');
-            authModal?.classList.add('show');
-        }, 10);
-    }
-    
-    function hideAuthModal() {
-        authModalBackdrop?.classList.remove('show');
-        authModal?.classList.remove('show');
-        setTimeout(() => {
-            authModalBackdrop?.classList.add('hidden');
-            authModal?.classList.add('hidden');
-            authForm?.reset(); // Clear form on close
-        }, 300); // Match CSS transition duration
-    }
-
-
     // --- Event Listeners ---
     chatForm!.addEventListener('submit', handleSendMessage);
     chatInput!.addEventListener('input', updateSendButtonState);
     sendButton!.addEventListener('click', () => {
-        if (chatInput!.value.trim() === '') {
-            startCall();
-        }
+        if (chatInput!.value.trim() === '') startCall();
     });
     endCallButton!.addEventListener('click', endCall);
-    
-    // Auth Listeners
     signupButton!.addEventListener('click', showAuthModal);
     logoutButton!.addEventListener('click', handleLogout);
     authModalCloseButton!.addEventListener('click', hideAuthModal);
     authModalBackdrop!.addEventListener('click', hideAuthModal);
-    switchToSignupLink!.addEventListener('click', (e) => {
-        e.preventDefault();
-        isLoginMode = false;
-        updateAuthModalView();
-    });
-    switchToLoginLink!.addEventListener('click', (e) => {
-        e.preventDefault();
-        isLoginMode = true;
-        updateAuthModalView();
-    });
+    switchToSignupLink!.addEventListener('click', (e) => { e.preventDefault(); isLoginMode = false; updateAuthModalView(); });
+    switchToLoginLink!.addEventListener('click', (e) => { e.preventDefault(); isLoginMode = true; updateAuthModalView(); });
 
-    authForm!.addEventListener('submit', (e) => {
+    authForm!.addEventListener('submit', async (e) => {
         e.preventDefault();
         const email = emailInput!.value.trim();
         const password = passwordInput!.value;
-
-        const users = JSON.parse(localStorage.getItem(USERS_STORAGE_KEY) || '{}');
+        authSubmitButton!.disabled = true;
+        authSubmitButton!.textContent = '...جاري المعالجة';
 
         if (isLoginMode) {
-            // Login Logic
-            if (users[email] && users[email] === password) {
-                currentUser = email;
-                localStorage.setItem(LOGGED_IN_USER_KEY, email);
-                updateAuthStateUI();
-                hideAuthModal();
+            const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+            if (error) {
+                 if (error.message.includes('Email not confirmed')) {
+                    alert('لم يتم تأكيد بريدك الإلكتروني. يرجى التحقق من صندوق الوارد الخاص بك والنقر على رابط التفعيل.');
+                } else {
+                    alert('البريد الإلكتروني أو كلمة المرور غير صحيحة.');
+                }
             } else {
-                alert('البريد الإلكتروني أو كلمة المرور غير صحيحة.');
+                if (data.user?.email === ADMIN_EMAIL) playAdminLoginSound();
+                hideAuthModal();
+                if (data.user?.email === ADMIN_EMAIL) {
+                    setTimeout(() => appendMessage('مرحباً بالمدير، سيدي الشيخ!', 'ai'), 300);
+                }
             }
         } else {
-            // Signup Logic
-            const confirmPassword = confirmPasswordInput!.value;
-            if (password !== confirmPassword) {
+            if (password !== confirmPasswordInput!.value) {
                 alert('كلمتا المرور غير متطابقتين.');
-                return;
+            } else {
+                const { error } = await supabase.auth.signUp({ email, password });
+                if (error) {
+                    if (error.message.includes('User already registered')) alert('هذا البريد الإلكتروني مسجل بالفعل.');
+                    else if (error.message.includes('password should be at least 6 characters')) alert('يجب أن تتكون كلمة المرور من 6 أحرف على الأقل.');
+                    else alert('حدث خطأ أثناء إنشاء الحساب: ' + error.message);
+                } else {
+                    alert('تم إنشاء الحساب بنجاح! يرجى التحقق من بريدك الإلكتروني لتفعيل الحساب.');
+                    hideAuthModal();
+                }
             }
-            if (users[email]) {
-                alert('هذا البريد الإلكتروني مسجل بالفعل.');
-                return;
-            }
-
-            users[email] = password;
-            localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
-            
-            currentUser = email;
-            localStorage.setItem(LOGGED_IN_USER_KEY, email);
-            
-            alert('تم إنشاء الحساب بنجاح!');
-            updateAuthStateUI();
-            hideAuthModal();
         }
+        authSubmitButton!.disabled = false;
+        updateAuthModalView();
     });
 
-    window.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && authModal?.classList.contains('show')) {
-            hideAuthModal();
+    adminTrainButton!.addEventListener('click', showTrainModal);
+    trainModalCloseButton!.addEventListener('click', hideTrainModal);
+    trainModalBackdrop!.addEventListener('click', hideTrainModal);
+    trainForm!.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const newInstructions = instructionTextarea!.value.trim();
+        if (!newInstructions) return alert('لا يمكن أن تكون التعليمات فارغة.');
+
+        saveInstructionsButton!.disabled = true;
+        saveInstructionsButton!.textContent = '...جاري الحفظ';
+
+        const { error } = await supabase
+            .from('system_instructions')
+            .upsert({ id: 1, instruction_text: newInstructions });
+
+        if (error) {
+            console.error('Failed to save instructions:', error.message);
+            if (error.message.includes("does not exist")) {
+                 alert(
+                    'فشل الحفظ: الجدول "system_instructions" غير موجود.\n\n' +
+                    'لإصلاح هذا، قم بتشغيل كود SQL التالي في محرر Supabase:\n\n' +
+                    'CREATE TABLE public.system_instructions (\n' +
+                    '  id BIGINT PRIMARY KEY,\n' +
+                    '  instruction_text TEXT\n' +
+                    ');\n\n' +
+                    "INSERT INTO public.system_instructions (id, instruction_text) VALUES (1, 'Your default instructions here...');\n\n" +
+                    'ملاحظة: تأكد من أن سياسات RLS تسمح بعملية "upsert".'
+                );
+            } else {
+                alert('فشل حفظ التعليمات: ' + error.message);
+            }
+        } else {
+            // Success
+            currentSystemInstruction = newInstructions;
+            reinitializeChat();
+            hideTrainModal();
+            setTimeout(() => appendMessage('تم تحديث التعليمات بنجاح.', 'ai'), 300);
         }
+
+        saveInstructionsButton!.disabled = false;
+        saveInstructionsButton!.textContent = 'حفظ التغييرات';
     });
-
-
-    // --- Dropdown Menu Logic ---
+    
+    // --- Voice Menu Logic ---
     menuButton!.addEventListener('click', (e) => {
-      e.stopPropagation(); // prevent window listener from closing it immediately
-      voiceMenu!.classList.toggle('show');
+        e.stopPropagation();
+        voiceMenu!.classList.toggle('show');
     });
 
-    window.addEventListener('click', (e) => {
-      if (voiceMenu!.classList.contains('show')) {
-        // Fix: Cast the target to an element to check if it's inside the menu button
-        const target = e.target as Element;
-        if (!menuButton!.contains(target)) {
-          voiceMenu!.classList.remove('show');
+    document.addEventListener('click', (e) => {
+        if (!voiceMenu!.contains(e.target as Node) && !menuButton!.contains(e.target as Node)) {
+            voiceMenu!.classList.remove('show');
         }
-      }
     });
 
-    voiceMenu!.addEventListener('click', (e) => {
-      e.stopPropagation(); // prevent window listener from closing it
-      const target = e.target as HTMLElement;
-      // Fix: Cast the result of closest() to HTMLElement to access the dataset property.
-      const menuItem = target.closest('.menu-item') as HTMLElement | null;
-      if (menuItem && menuItem.dataset.voice) {
-        selectedVoice = menuItem.dataset.voice as VoiceOption;
+    voiceMenu!.querySelectorAll('.menu-item[data-voice]').forEach(button => {
+        button.addEventListener('click', () => {
+            const voice = button.getAttribute('data-voice') as VoiceOption;
+            selectedVoice = voice;
 
-        // Update UI
-        document.querySelectorAll('.menu-item').forEach(item => item.classList.remove('selected-voice'));
-        menuItem.classList.add('selected-voice');
-
-        // Close menu
-        voiceMenu!.classList.remove('show');
-      }
+            // Update UI
+            voiceMenu!.querySelectorAll('.menu-item[data-voice]').forEach(btn => {
+                btn.classList.remove('selected-voice');
+            });
+            button.classList.add('selected-voice');
+            voiceMenu!.classList.remove('show');
+        });
     });
 
-    updateSendButtonState(); // Set initial state on load
-
-  } catch (error) {
-      console.error(error);
-      const errorMessage = (error instanceof Error) ? error.message : "حدث خطأ غير معروف أثناء التهيئة.";
-      if (chatContainer) {
-          chatContainer.innerHTML = `<div style="padding: 20px; text-align: center; color: #ffcccc; font-family: sans-serif; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100%;">
-                  <h1 style="color: #ff8080;">خطأ في الإعداد</h1><p style="font-size: 1.1rem; max-width: 600px;">${errorMessage}</p></div>`;
-      }
+  } catch (err: any) {
+    console.error('Fatal initialization error:', err);
+    if (chatContainer) {
+      chatContainer.innerHTML = `<div style="padding: 20px; text-align: center; color: var(--danger-color); font-family: sans-serif;">
+        <h1>خطأ غير متوقع</h1>
+        <p>حدث خطأ أثناء تهيئة التطبيق. يرجى التحقق من وحدة التحكم لمزيد من التفاصيل.</p>
+        <p style="font-size: 0.8em; color: #999;">${err.message || 'Unknown error'}</p>
+      </div>`;
+    }
   }
 }
 
-// Run the initialization function when the script loads
+// Start the application
 initializeChat();
