@@ -131,8 +131,9 @@ function initializeChat() {
   }
 
   try {
-    // Fix: API key must be retrieved from environment variables.
-    const apiKey = process.env.API_KEY;
+    // تحذير: تخزين مفاتيح API مباشرة في الكود غير آمن. تم فعل ذلك بناءً على طلبك للتجربة فقط.
+    // الرجاء إزالته واستخدام متغيرات البيئة قبل النشر.
+    const apiKey = "AIzaSyAKGB7rK2n6BSXz14C3v_Vj7V8saogNM64";
     if (!apiKey) {
       throw new Error("لم يتم العثور على مفتاح API.");
     }
