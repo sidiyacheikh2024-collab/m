@@ -33,7 +33,7 @@ html, body {
     padding: 10px 20px;
     border-bottom: 1px solid var(--border-color);
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-end; /* Align menu to the left in RTL */
     align-items: center;
     position: relative; /* For dropdown and title positioning */
 }
@@ -63,26 +63,6 @@ html, body {
   fill: var(--text-color);
 }
 
-.auth-controls {
-  z-index: 2; /* Ensure it's above the centered title */
-}
-
-.header-button {
-  background-color: transparent;
-  border: 1px solid var(--border-color);
-  color: var(--text-color);
-  padding: 6px 14px;
-  font-size: 0.9rem;
-  border-radius: 20px;
-  cursor: pointer;
-  transition: background-color 0.2s, border-color 0.2s;
-}
-
-.header-button:hover {
-  background-color: var(--surface-color);
-  border-color: var(--primary-color);
-}
-
 .dropdown-menu {
   display: block; /* Visibility controlled by opacity/transform */
   position: absolute;
@@ -93,7 +73,7 @@ html, body {
   border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0,0,0,0.3);
   z-index: 101;
-  min-width: 160px;
+  min-width: 200px;
   padding: 8px;
   opacity: 0;
   transform: translateY(-10px) scale(0.95);
@@ -132,6 +112,12 @@ html, body {
 .menu-item.selected-voice {
   color: var(--primary-color);
   font-weight: 500;
+}
+
+.menu-divider {
+    height: 1px;
+    background-color: var(--border-color);
+    margin: 6px 0;
 }
 
 .check-icon {

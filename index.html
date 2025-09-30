@@ -17,10 +17,6 @@
 <body>
   <div id="chat-container">
     <div id="chat-header">
-      <div class="auth-controls">
-        <button id="signup-button" class="header-button">تسجيل</button>
-        <button id="logout-button" class="header-button hidden">تسجيل الخروج</button>
-      </div>
       <h1>دردشة الذكاء الاصطناعي</h1>
       <button id="menu-button" aria-label="قائمة الخيارات">
         <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="currentColor"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg>
@@ -33,6 +29,13 @@
         <button class="menu-item" data-voice="Fenrir">
           <span>صوت رجل</span>
           <svg class="check-icon" xmlns="http://www.w3.org/2000/svg" height="20px" viewBox="0 0 24 24" width="20px" fill="currentColor"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
+        </button>
+        <div class="menu-divider"></div>
+        <button class="menu-item" id="signup-button">
+          <span>تسجيل / إنشاء حساب</span>
+        </button>
+        <button class="menu-item hidden" id="logout-button">
+          <span>تسجيل الخروج</span>
         </button>
       </div>
     </div>
