@@ -12,6 +12,9 @@ const callStatus = document.getElementById('call-status') as HTMLDivElement | nu
 const endCallButton = document.getElementById('end-call-button') as HTMLButtonElement | null;
 const menuButton = document.getElementById('menu-button') as HTMLButtonElement | null;
 const voiceMenu = document.getElementById('voice-menu') as HTMLDivElement | null;
+const callTranscriptContainer = document.getElementById('call-transcript-container') as HTMLDivElement | null;
+const callTranscriptText = document.getElementById('call-transcript-text') as HTMLParagraphElement | null;
+
 
 // --- SVG Icons ---
 const sendIconSVG = `<svg class="send-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path></svg>`;
@@ -28,6 +31,9 @@ let nextStartTime = 0;
 const sources = new Set<AudioBufferSourceNode>();
 type VoiceOption = 'Zephyr' | 'Fenrir' | 'Puck' | 'Charon' | 'Kore';
 let selectedVoice: VoiceOption = 'Zephyr'; // Default: female voice
+let callTranscriptHistory: { sender: 'user' | 'ai', text: string }[] = [];
+let currentInputTranscription = '';
+let currentOutputTranscription = '';
 
 
 // --- Helper Functions ---
@@ -126,7 +132,7 @@ function createBlob(data: Float32Array): Blob {
 
 // --- Main Application Logic ---
 function initializeChat() {
-  if (!chatContainer || !chatMessages || !chatForm || !chatInput || !sendButton || !callScreen || !callStatus || !endCallButton || !menuButton || !voiceMenu) {
+  if (!chatContainer || !chatMessages || !chatForm || !chatInput || !sendButton || !callScreen || !callStatus || !endCallButton || !menuButton || !voiceMenu || !callTranscriptContainer || !callTranscriptText) {
     console.error('Fatal Error: One or more essential chat/call elements are missing from the DOM.');
     if (document.body) {
       document.body.innerHTML = '<div style="padding: 20px; text-align: center; color: red; font-family: sans-serif;"><h1>خطأ فادح</h1><p>لم يتم تحميل واجهة الدردشة أو الاتصال بشكل صحيح.</p></div>';
@@ -137,8 +143,7 @@ function initializeChat() {
   try {
     // تحذير: تخزين مفاتيح API مباشرة في الكود غير آمن. تم فعل ذلك بناءً على طلبك للتجربة فقط.
     // الرجاء إزالته واستخدام متغيرات البيئة قبل النشر.
-    // Fix: API key must be retrieved from environment variables, not hardcoded.
-    const apiKey = process.env.API_KEY;
+    const apiKey = "AIzaSyAKGB7rK2n6BSXz14C3v_Vj7V8saogNM64";
     if (!apiKey) {
       throw new Error("لم يتم العثور على مفتاح API.");
     }
@@ -193,6 +198,12 @@ function initializeChat() {
 
     // --- Voice Call Logic ---
     async function startCall() {
+        // Reset state from any previous call
+        callTranscriptHistory = [];
+        currentInputTranscription = '';
+        currentOutputTranscription = '';
+        if (callTranscriptText) callTranscriptText.textContent = '';
+      
       try {
         mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
         callScreen!.style.display = 'flex';
@@ -255,6 +266,33 @@ function initializeChat() {
                         }
                         nextStartTime = 0;
                     }
+                     // Handle transcription
+                    if (message.serverContent?.outputTranscription) {
+                        const text = message.serverContent.outputTranscription.text;
+                        currentOutputTranscription += text;
+                        if (callTranscriptText) {
+                            callTranscriptText.textContent = currentOutputTranscription;
+                            if(callTranscriptContainer) {
+                            callTranscriptContainer.scrollTop = callTranscriptContainer.scrollHeight;
+                            }
+                        }
+                    } else if (message.serverContent?.inputTranscription) {
+                        const text = message.serverContent.inputTranscription.text;
+                        currentInputTranscription += text;
+                    }
+
+                    if (message.serverContent?.turnComplete) {
+                        if (currentInputTranscription.trim()) {
+                            callTranscriptHistory.push({ sender: 'user', text: currentInputTranscription.trim() });
+                        }
+                        if (currentOutputTranscription.trim()) {
+                            callTranscriptHistory.push({ sender: 'ai', text: currentOutputTranscription.trim() });
+                        }
+                        // Reset for next turn
+                        currentInputTranscription = '';
+                        currentOutputTranscription = '';
+                        // Don't clear the live text, it will be cleared by the next outputTranscription chunk
+                    }
                 },
                 onerror: (e: ErrorEvent) => {
                     console.error('Live session error:', e);
@@ -267,6 +305,8 @@ function initializeChat() {
             },
             config: {
                 responseModalities: [Modality.AUDIO],
+                inputAudioTranscription: {}, // Enable user speech transcription
+                outputAudioTranscription: {}, // Enable AI speech transcription
                 systemInstruction: getSystemInstruction(),
                 speechConfig: {
                   voiceConfig: { prebuiltVoiceConfig: { voiceName: selectedVoice } },
@@ -277,7 +317,7 @@ function initializeChat() {
 
     function endCall() {
       if (sessionPromise) {
-        sessionPromise.then(session => session.close());
+        sessionPromise.then(session => session.close()).catch(console.error);
         sessionPromise = null;
       }
       if (mediaStream) {
@@ -289,16 +329,36 @@ function initializeChat() {
         scriptProcessor = null;
       }
       if (inputAudioContext) {
-        inputAudioContext.close();
+        inputAudioContext.close().catch(console.error);
         inputAudioContext = null;
       }
        if (outputAudioContext) {
-        outputAudioContext.close();
+        outputAudioContext.close().catch(console.error);
         outputAudioContext = null;
       }
       sources.forEach(source => source.stop());
       sources.clear();
       nextStartTime = 0;
+
+      // Check for any lingering partial transcriptions
+      if (currentInputTranscription.trim()) {
+          callTranscriptHistory.push({ sender: 'user', text: currentInputTranscription.trim() });
+      }
+      if (currentOutputTranscription.trim()) {
+          callTranscriptHistory.push({ sender: 'ai', text: currentOutputTranscription.trim() });
+      }
+
+      // Append transcript to chat
+      callTranscriptHistory.forEach(entry => {
+          appendMessage(entry.text, entry.sender);
+      });
+
+      // Reset all transcript state
+      callTranscriptHistory = [];
+      currentInputTranscription = '';
+      currentOutputTranscription = '';
+      if(callTranscriptText) callTranscriptText.textContent = '';
+
 
       callScreen!.style.display = 'none';
     }

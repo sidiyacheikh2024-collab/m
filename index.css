@@ -267,6 +267,8 @@ html, body {
   font-size: 1.2rem;
   color: var(--text-color);
   opacity: 0.8;
+  position: absolute;
+  top: 50px;
 }
 
 #call-icon-container {
@@ -294,6 +296,33 @@ html, body {
   font-weight: bold;
   color: var(--text-color);
 }
+
+#call-transcript-container {
+    position: absolute;
+    bottom: 120px;
+    width: calc(100% - 40px);
+    max-width: 600px;
+    height: 120px;
+    background-color: rgba(0, 0, 0, 0.2);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 15px;
+    box-sizing: border-box;
+    overflow-y: auto;
+    display: flex;
+    align-items: flex-start; /* Start text from top */
+}
+
+#call-transcript-text {
+    margin: 0;
+    font-size: 1rem;
+    color: var(--text-color);
+    text-align: right;
+    width: 100%;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
 
 #end-call-button {
   position: absolute;
