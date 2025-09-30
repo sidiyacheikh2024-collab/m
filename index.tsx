@@ -699,7 +699,7 @@ async function initializeChat() {
     });
 
     // Fix: Initialize the `ai` variable that was declared in the outer scope.
-    ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    ai = new GoogleGenAI({ apiKey: 'AIzaSyAKGB7rK2n6BSXz14C3v_Vj7V8saogNM64' });
     
     await fetchInstructionsAndCorrections();
     
