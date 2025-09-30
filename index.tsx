@@ -10,6 +10,8 @@ const sendButton = document.getElementById('send-button') as HTMLButtonElement |
 const callScreen = document.getElementById('call-screen') as HTMLDivElement | null;
 const callStatus = document.getElementById('call-status') as HTMLDivElement | null;
 const endCallButton = document.getElementById('end-call-button') as HTMLButtonElement | null;
+const menuButton = document.getElementById('menu-button') as HTMLButtonElement | null;
+const voiceMenu = document.getElementById('voice-menu') as HTMLDivElement | null;
 
 // --- SVG Icons ---
 const sendIconSVG = `<svg class="send-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path></svg>`;
@@ -24,6 +26,8 @@ let outputAudioContext: AudioContext | null = null;
 let scriptProcessor: ScriptProcessorNode | null = null;
 let nextStartTime = 0;
 const sources = new Set<AudioBufferSourceNode>();
+type VoiceOption = 'Zephyr' | 'Fenrir' | 'Puck' | 'Charon' | 'Kore';
+let selectedVoice: VoiceOption = 'Zephyr'; // Default: female voice
 
 
 // --- Helper Functions ---
@@ -122,7 +126,7 @@ function createBlob(data: Float32Array): Blob {
 
 // --- Main Application Logic ---
 function initializeChat() {
-  if (!chatContainer || !chatMessages || !chatForm || !chatInput || !sendButton || !callScreen || !callStatus || !endCallButton) {
+  if (!chatContainer || !chatMessages || !chatForm || !chatInput || !sendButton || !callScreen || !callStatus || !endCallButton || !menuButton || !voiceMenu) {
     console.error('Fatal Error: One or more essential chat/call elements are missing from the DOM.');
     if (document.body) {
       document.body.innerHTML = '<div style="padding: 20px; text-align: center; color: red; font-family: sans-serif;"><h1>خطأ فادح</h1><p>لم يتم تحميل واجهة الدردشة أو الاتصال بشكل صحيح.</p></div>';
@@ -133,7 +137,8 @@ function initializeChat() {
   try {
     // تحذير: تخزين مفاتيح API مباشرة في الكود غير آمن. تم فعل ذلك بناءً على طلبك للتجربة فقط.
     // الرجاء إزالته واستخدام متغيرات البيئة قبل النشر.
-    const apiKey = "AIzaSyAKGB7rK2n6BSXz14C3v_Vj7V8saogNM64";
+    // Fix: API key must be retrieved from environment variables, not hardcoded.
+    const apiKey = process.env.API_KEY;
     if (!apiKey) {
       throw new Error("لم يتم العثور على مفتاح API.");
     }
@@ -263,6 +268,9 @@ function initializeChat() {
             config: {
                 responseModalities: [Modality.AUDIO],
                 systemInstruction: getSystemInstruction(),
+                speechConfig: {
+                  voiceConfig: { prebuiltVoiceConfig: { voiceName: selectedVoice } },
+                },
             },
         });
     }
@@ -305,6 +313,35 @@ function initializeChat() {
         }
     });
     endCallButton.addEventListener('click', endCall);
+
+    // --- Dropdown Menu Logic ---
+    menuButton.addEventListener('click', (e) => {
+      e.stopPropagation(); // prevent window listener from closing it immediately
+      voiceMenu.classList.toggle('show');
+    });
+
+    window.addEventListener('click', () => {
+      if (voiceMenu.classList.contains('show')) {
+        voiceMenu.classList.remove('show');
+      }
+    });
+
+    voiceMenu.addEventListener('click', (e) => {
+      e.stopPropagation(); // prevent window listener from closing it
+      const target = e.target as HTMLElement;
+      // Fix: Cast the result of closest() to HTMLElement to access the dataset property.
+      const menuItem = target.closest('.menu-item') as HTMLElement | null;
+      if (menuItem && menuItem.dataset.voice) {
+        selectedVoice = menuItem.dataset.voice as VoiceOption;
+
+        // Update UI
+        document.querySelectorAll('.menu-item').forEach(item => item.classList.remove('selected-voice'));
+        menuItem.classList.add('selected-voice');
+
+        // Close menu
+        voiceMenu.classList.remove('show');
+      }
+    });
 
     updateSendButtonState(); // Set initial state on load
 

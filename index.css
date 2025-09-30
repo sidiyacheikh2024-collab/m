@@ -32,14 +32,102 @@ html, body {
     background-color: var(--background-color);
     padding: 10px 20px;
     border-bottom: 1px solid var(--border-color);
-    text-align: center;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    position: relative; /* For dropdown and title positioning */
 }
 
 #chat-header h1 {
     margin: 0;
     font-size: 1.2rem;
     color: var(--primary-color);
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    white-space: nowrap;
 }
+
+#menu-button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 102; /* Above dropdown */
+}
+
+#menu-button svg {
+  fill: var(--text-color);
+}
+
+.header-placeholder {
+  width: 40px; /* Match menu-button's effective width */
+}
+
+.dropdown-menu {
+  display: block; /* Visibility controlled by opacity/transform */
+  position: absolute;
+  top: 90%;
+  right: 15px; /* Aligns with menu button on the right */
+  background-color: #2a2a2a;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  z-index: 101;
+  min-width: 160px;
+  padding: 8px;
+  opacity: 0;
+  transform: translateY(-10px) scale(0.95);
+  transform-origin: top right;
+  pointer-events: none;
+  transition: opacity 0.15s ease-out, transform 0.15s ease-out;
+}
+
+.dropdown-menu.show {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+.menu-item {
+  display: flex;
+  justify-content: flex-end; /* RTL friendly */
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  color: var(--text-color);
+  font-size: 0.95rem;
+  cursor: pointer;
+  background: none;
+  border: none;
+  width: 100%;
+  text-align: right;
+  border-radius: 6px;
+  transition: background-color 0.2s;
+}
+
+.menu-item:hover {
+  background-color: var(--background-color);
+}
+
+.menu-item.selected-voice {
+  color: var(--primary-color);
+  font-weight: 500;
+}
+
+.check-icon {
+  visibility: hidden;
+  fill: var(--primary-color);
+  flex-shrink: 0;
+}
+
+.menu-item.selected-voice .check-icon {
+  visibility: visible;
+}
+
 
 #chat-messages {
   flex: 1;
@@ -63,13 +151,13 @@ html, body {
 .user-message {
   background-color: var(--user-bubble-color);
   color: white;
-  align-self: flex-start; /* Changed for RTL: user on right */
+  align-self: flex-start; /* RTL: flex-start is right */
   border-bottom-right-radius: 4px;
 }
 
 .ai-message {
   background-color: var(--ai-bubble-color);
-  align-self: flex-end; /* Changed for RTL: AI on left */
+  align-self: flex-end; /* RTL: flex-end is left */
   border-bottom-left-radius: 4px;
 }
 

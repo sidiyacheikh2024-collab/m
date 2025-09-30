@@ -17,7 +17,21 @@
 <body>
   <div id="chat-container">
     <div id="chat-header">
+      <div class="header-placeholder"></div>
       <h1>دردشة الذكاء الاصطناعي</h1>
+      <button id="menu-button" aria-label="قائمة الخيارات">
+        <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="currentColor"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg>
+      </button>
+      <div id="voice-menu" class="dropdown-menu">
+        <button class="menu-item selected-voice" data-voice="Zephyr">
+          <span>صوت امرأة</span>
+          <svg class="check-icon" xmlns="http://www.w3.org/2000/svg" height="20px" viewBox="0 0 24 24" width="20px" fill="currentColor"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
+        </button>
+        <button class="menu-item" data-voice="Fenrir">
+          <span>صوت رجل</span>
+          <svg class="check-icon" xmlns="http://www.w3.org/2000/svg" height="20px" viewBox="0 0 24 24" width="20px" fill="currentColor"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
+        </button>
+      </div>
     </div>
     <div id="chat-messages"></div>
     <form id="chat-form">
