@@ -18,8 +18,8 @@
 <body>
   <div id="chat-container">
     <div id="chat-header">
-       <button id="admin-train-button" class="hidden" aria-label="تدريب الروبوت">
-        <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="currentColor"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M19.43 12.98c.04-.32.07-.64.07-.98s-.03-.66-.07-.98l2.11-1.65c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.3-.61-.22l-2.49 1c-.52-.4-1.08-.73-1.69-.98l-.38-2.65C14.46 2.18 14.25 2 14 2h-4c-.25 0-.46.18-.49.42l-.38 2.65c-.61.25-1.17.59-1.69.98l-2.49-1c-.23-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64l2.11 1.65c-.04.32-.07.65-.07.98s.03.66.07.98l-2.11 1.65c-.19.15-.24.42-.12.64l2 3.46c.12.22.39.3.61.22l2.49-1c.52.4 1.08.73 1.69.98l.38 2.65c.03.24.24.42.49.42h4c.25 0 .46-.18.49-.42l.38-2.65c.61-.25 1.17-.59 1.69-.98l2.49 1c.23.09.49 0 .61-.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.65zM12 15.5c-1.93 0-3.5-1.57-3.5-3.5s1.57-3.5 3.5-3.5 3.5 1.57 3.5 3.5-1.57 3.5-3.5 3.5z"/></svg>
+       <button id="admin-dashboard-button" class="hidden" aria-label="لوحة تحكم المدير">
+        <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="currentColor"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/></svg>
       </button>
       <h1>دردشة الذكاء الاصطناعي</h1>
       <button id="menu-button" aria-label="قائمة الخيارات">
@@ -83,15 +83,69 @@
     </div>
   </div>
 
-  <div id="train-modal-backdrop" class="hidden"></div>
-  <div id="train-modal" class="hidden">
-    <button id="train-modal-close-button" aria-label="إغلاق">&times;</button>
-    <h2>تدريب المساعد</h2>
-    <p>قم بتعديل التعليمات البرمجية الأساسية للمساعد. سيتم تطبيق التغييرات على جميع المستخدمين فوراً.</p>
-    <form id="train-form">
-      <textarea id="instruction-textarea" placeholder="اكتب التعليمات هنا..." rows="15" dir="ltr"></textarea>
-      <button type="submit" id="save-instructions-button">حفظ التغييرات</button>
-    </form>
+  <div id="admin-dashboard-backdrop" class="hidden"></div>
+  <div id="admin-dashboard" class="hidden">
+    <div class="dashboard-header">
+      <h2>لوحة تحكم المدير</h2>
+      <button id="admin-dashboard-close-button" aria-label="إغلاق">&times;</button>
+    </div>
+    <div class="dashboard-tabs">
+      <button class="tab-button active" data-tab="corrections">التصحيحات</button>
+      <button class="tab-button" data-tab="instructions">التعليمات الأساسية</button>
+    </div>
+    <div class="dashboard-content">
+      <div id="corrections-content" class="tab-content active">
+        <div class="corrections-toolbar">
+            <input type="search" id="corrections-search-input" placeholder="ابحث في التصحيحات...">
+        </div>
+        <div id="corrections-list">
+            <!-- Corrections will be loaded here -->
+        </div>
+      </div>
+      <div id="instructions-content" class="tab-content">
+        <p>قم بتعديل سلوك المساعد عبر هذه الأجزاء المنفصلة. التغييرات ستطبق فوراً.</p>
+        <form id="train-form">
+          <div class="instruction-part">
+            <label for="inst-personality">شخصية المساعد</label>
+            <textarea id="inst-personality" data-part="personality" dir="ltr" rows="3"></textarea>
+          </div>
+          <div class="instruction-part">
+            <label for="inst-rules">قواعد مهمة</label>
+            <textarea id="inst-rules" data-part="rules" dir="ltr" rows="5"></textarea>
+          </div>
+           <div class="instruction-part">
+            <label for="inst-vocabulary">مفردات وتعابير أساسية</label>
+            <textarea id="inst-vocabulary" data-part="vocabulary" dir="ltr" rows="10"></textarea>
+          </div>
+          <div class="instruction-part">
+            <label for="inst-specificResponses">ردود محددة للمواقف</label>
+            <textarea id="inst-specificResponses" data-part="specificResponses" dir="ltr" rows="7"></textarea>
+          </div>
+          <div class="instruction-part">
+            <label for="inst-developerResponse">الرد على سؤال "من طورك؟"</label>
+            <textarea id="inst-developerResponse" data-part="developerResponse" dir="ltr" rows="4"></textarea>
+          </div>
+          <div class="instruction-part">
+            <label for="inst-adminNotice">تنبيه خاص بالمدير</label>
+            <textarea id="inst-adminNotice" data-part="adminNotice" dir="ltr" rows="3"></textarea>
+          </div>
+          <div class="instruction-part">
+            <label for="inst-learningMethod">كيفية التعلم من التصحيحات</label>
+            <textarea id="inst-learningMethod" data-part="learningMethod" dir="ltr" rows="8"></textarea>
+          </div>
+          <div class="instruction-part">
+            <label for="inst-examples">أمثلة للمحادثة</label>
+            <textarea id="inst-examples" data-part="examples" dir="ltr" rows="10"></textarea>
+          </div>
+           <div class="instruction-part">
+            <label for="inst-conclusion">الخلاصة</label>
+            <textarea id="inst-conclusion" data-part="conclusion" dir="ltr" rows="2"></textarea>
+          </div>
+
+          <button type="submit" id="save-instructions-button">حفظ التغييرات</button>
+        </form>
+      </div>
+    </div>
   </div>
 
 

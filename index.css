@@ -47,7 +47,7 @@ html, body {
     white-space: nowrap;
 }
 
-#menu-button, #admin-train-button {
+#menu-button, #admin-dashboard-button {
   background: none;
   border: none;
   cursor: pointer;
@@ -63,7 +63,7 @@ html, body {
   margin-inline-start: auto;
 }
 
-#menu-button svg, #admin-train-button svg {
+#menu-button svg, #admin-dashboard-button svg {
   fill: var(--text-color);
 }
 
@@ -182,7 +182,7 @@ html, body {
   border-bottom-left-radius: 4px;
 }
 
-/* --- Direct Correction (Edit) Styles --- */
+/* --- Direct Correction (Edit) & Report Styles --- */
 
 .message-actions {
     display: flex;
@@ -197,7 +197,7 @@ html, body {
     opacity: 1;
 }
 
-.edit-btn {
+.edit-btn, .report-btn {
     background: none;
     border: none;
     cursor: pointer;
@@ -207,12 +207,24 @@ html, body {
     align-items: center;
     justify-content: center;
 }
-.edit-btn:hover {
+.edit-btn:hover, .report-btn:hover {
     background-color: rgba(255, 255, 255, 0.1);
 }
-.edit-btn svg {
+.edit-btn svg, .report-btn svg {
     fill: var(--text-color);
 }
+
+.report-btn.reported {
+    cursor: default;
+    opacity: 0.6;
+}
+.report-btn.reported svg {
+    fill: var(--primary-color);
+}
+.report-btn.reported:hover {
+    background: none;
+}
+
 
 .message-edit-container {
     flex-grow: 1;
@@ -268,7 +280,7 @@ html, body {
     background-color: #444;
 }
 
-/* --- End Direct Correction Styles --- */
+/* --- End Message Actions Styles --- */
 
 
 .loading-indicator {
@@ -457,7 +469,7 @@ html, body {
   display: none !important;
 }
 
-#auth-modal-backdrop, #train-modal-backdrop {
+#auth-modal-backdrop, #admin-dashboard-backdrop {
   position: fixed;
   top: 0;
   left: 0;
@@ -469,12 +481,13 @@ html, body {
   transition: opacity 0.3s ease;
 }
 
-#auth-modal, #train-modal {
+#auth-modal {
   position: fixed;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%) scale(0.95);
   width: 90%;
+  max-width: 400px;
   background-color: var(--surface-color);
   border-radius: 12px;
   box-shadow: 0 5px 20px rgba(0,0,0,0.4);
@@ -486,16 +499,15 @@ html, body {
   transition: opacity 0.3s ease, transform 0.3s ease;
 }
 
-
 #auth-modal-backdrop.show, #auth-modal.show,
-#train-modal-backdrop.show, #train-modal.show {
+#admin-dashboard-backdrop.show, #admin-dashboard.show {
   opacity: 1;
 }
-#auth-modal.show, #train-modal.show {
+#auth-modal.show, #admin-dashboard.show {
   transform: translate(-50%, -50%) scale(1);
 }
 
-#auth-modal-close-button, #train-modal-close-button {
+#auth-modal-close-button {
   position: absolute;
   top: 10px;
   left: 10px; /* RTL */
@@ -509,13 +521,13 @@ html, body {
   line-height: 1;
 }
 
-#auth-modal h2, #train-modal h2 {
+#auth-modal h2 {
   margin-top: 0;
   margin-bottom: 10px;
   color: var(--primary-color);
 }
 
-#auth-modal p, #train-modal p {
+#auth-modal p {
   margin-top: 0;
   margin-bottom: 25px;
   opacity: 0.8;
@@ -523,7 +535,7 @@ html, body {
 }
 
 
-#auth-form button, #train-form button {
+#auth-form button {
   padding: 12px;
   border: none;
   border-radius: 8px;
@@ -535,16 +547,13 @@ html, body {
   transition: background-color 0.2s;
 }
 
-#auth-form button:hover, #train-form button:hover {
+#auth-form button:hover {
   background-color: var(--primary-variant-color);
   color: white;
 }
 
 
 /* --- Auth Modal Specific Styles --- */
-#auth-modal {
-  max-width: 400px;
-}
 
 #auth-form {
   display: flex;
@@ -593,21 +602,256 @@ html, body {
   text-decoration: underline;
 }
 
-/* --- Train Modal Specific Styles --- */
-#train-modal {
-    max-width: 700px;
+/* --- Admin Dashboard Styles --- */
+#admin-dashboard {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0.95);
+    width: 95%;
+    max-width: 900px;
+    height: 90vh;
+    max-height: 800px;
+    background-color: var(--surface-color);
+    border-radius: 12px;
+    box-shadow: 0 5px 20px rgba(0,0,0,0.4);
+    z-index: 1001;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    opacity: 0;
+    transition: opacity 0.3s ease, transform 0.3s ease;
 }
 
-#train-form {
+.dashboard-header {
+    display: flex;
+    justify-content: center; /* Center title */
+    align-items: center;
+    padding: 15px 20px;
+    border-bottom: 1px solid var(--border-color);
+    position: relative;
+    flex-shrink: 0;
+}
+.dashboard-header h2 {
+    margin: 0;
+    color: var(--primary-color);
+}
+#admin-dashboard-close-button {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    left: 15px; /* RTL */
+    background: none;
+    border: none;
+    font-size: 1.8rem;
+    color: var(--text-color);
+    opacity: 0.6;
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+}
+
+.dashboard-tabs {
+    display: flex;
+    padding: 0 20px;
+    border-bottom: 1px solid var(--border-color);
+    flex-shrink: 0;
+}
+.tab-button {
+    background: none;
+    border: none;
+    color: var(--text-color);
+    opacity: 0.7;
+    padding: 15px 20px;
+    cursor: pointer;
+    font-size: 1rem;
+    border-bottom: 3px solid transparent;
+    transition: all 0.2s;
+}
+.tab-button:hover {
+    opacity: 1;
+    background-color: rgba(255, 255, 255, 0.05);
+}
+.tab-button.active {
+    opacity: 1;
+    color: var(--primary-color);
+    border-bottom-color: var(--primary-color);
+}
+
+.dashboard-content {
+    flex-grow: 1;
+    overflow-y: auto;
+}
+
+.tab-content {
+    display: none;
+    padding: 20px;
+}
+.tab-content.active {
+    display: block;
+}
+
+.corrections-toolbar {
+    margin-bottom: 20px;
+}
+#corrections-search-input {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background-color: var(--background-color);
+    color: var(--text-color);
+    font-size: 1rem;
+    outline: none;
+    box-sizing: border-box;
+}
+#corrections-search-input:focus {
+    border-color: var(--primary-color);
+}
+
+#corrections-list {
     display: flex;
     flex-direction: column;
     gap: 15px;
 }
 
-#instruction-textarea {
+.correction-card {
+    background-color: var(--background-color);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 15px;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+.correction-card.is-editing {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 10px rgba(187, 134, 252, 0.2);
+}
+.correction-card-section {
+    margin-bottom: 12px;
+}
+.correction-card-section:last-child {
+    margin-bottom: 0;
+}
+.correction-card-section label {
+    display: block;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--primary-color);
+    opacity: 0.8;
+    margin-bottom: 5px;
+}
+.correction-card-section p, .correction-card-section textarea {
+    margin: 0;
+    padding: 8px;
+    background-color: var(--surface-color);
+    border-radius: 6px;
+    line-height: 1.5;
+    font-size: 0.95rem;
+    white-space: pre-wrap;
+}
+.correction-card-section textarea {
     width: 100%;
     box-sizing: border-box;
-    padding: 15px;
+    border: 1px solid var(--primary-color);
+    color: var(--text-color);
+    resize: vertical;
+    min-height: 60px;
+    outline: none;
+    font-family: inherit;
+    font-size: 0.9rem;
+}
+
+
+.correction-card-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 15px;
+    border-top: 1px solid var(--border-color);
+    padding-top: 15px;
+}
+.correction-card-actions button {
+    background: none;
+    border: 1px solid var(--border-color);
+    color: var(--text-color);
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    transition: all 0.2s;
+}
+.correction-card-actions button:hover {
+    background-color: var(--border-color);
+}
+.delete-correction-btn {
+    border-color: var(--danger-color);
+    color: var(--danger-color);
+}
+.delete-correction-btn:hover {
+    background-color: var(--danger-color);
+    color: white;
+}
+.correction-card-actions .save-correction-btn {
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+}
+.correction-card-actions .save-correction-btn:hover {
+    background-color: var(--primary-color);
+    color: black;
+}
+
+
+#instructions-content p {
+    margin-top: 0;
+    margin-bottom: 25px;
+    opacity: 0.8;
+    font-size: 0.95rem;
+    text-align: center;
+}
+#train-form {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+#train-form button {
+  padding: 12px;
+  border: none;
+  border-radius: 8px;
+  background-color: var(--primary-color);
+  color: black;
+  font-size: 1rem;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+#train-form button:hover {
+    background-color: var(--primary-variant-color);
+    color: white;
+}
+
+/* New styles for instruction parts */
+.instruction-part {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.instruction-part label {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--primary-color);
+  opacity: 0.9;
+  text-align: right; /* RTL */
+}
+
+.instruction-part textarea {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 12px;
     border: 1px solid var(--border-color);
     border-radius: 8px;
     background-color: var(--background-color);
@@ -617,8 +861,9 @@ html, body {
     outline: none;
     resize: vertical;
     font-family: 'SF Mono', 'Fira Code', 'Fira Mono', 'Roboto Mono', monospace;
-    text-align: left;
+    text-align: left; /* LTR for code-like text */
 }
-#instruction-textarea:focus {
+
+.instruction-part textarea:focus {
     border-color: var(--primary-color);
 }

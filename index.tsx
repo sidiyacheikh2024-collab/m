@@ -1,7 +1,7 @@
 // Fix: Removed non-existent 'LiveSession' type from import.
 import { GoogleGenAI, Chat, LiveServerMessage, Modality, Blob } from "@google/genai";
 import { createClient, SupabaseClient, User } from '@supabase/supabase-js';
-import { getSystemInstruction, constructInstructionWithExamples } from './instructions';
+import { constructInstructionWithExamples, InstructionParts, getDefaultInstructionParts, assembleInstructionFromParts } from './instructions';
 
 // --- Supabase Initialization ---
 const supabaseUrl = 'https://rlfiypthhkamdedaiebv.supabase.co';
@@ -42,13 +42,17 @@ const toLoginSwitch = document.getElementById('to-login-switch') as HTMLParagrap
 const switchToSignupLink = document.getElementById('switch-to-signup') as HTMLAnchorElement | null;
 const switchToLoginLink = document.getElementById('switch-to-login') as HTMLAnchorElement | null;
 
-// Admin Training Elements
-const adminTrainButton = document.getElementById('admin-train-button') as HTMLButtonElement | null;
-const trainModal = document.getElementById('train-modal') as HTMLDivElement | null;
-const trainModalBackdrop = document.getElementById('train-modal-backdrop') as HTMLDivElement | null;
-const trainModalCloseButton = document.getElementById('train-modal-close-button') as HTMLButtonElement | null;
+// Admin Dashboard Elements
+const adminDashboardButton = document.getElementById('admin-dashboard-button') as HTMLButtonElement | null;
+const adminDashboard = document.getElementById('admin-dashboard') as HTMLDivElement | null;
+const adminDashboardBackdrop = document.getElementById('admin-dashboard-backdrop') as HTMLDivElement | null;
+const adminDashboardCloseButton = document.getElementById('admin-dashboard-close-button') as HTMLButtonElement | null;
+const dashboardTabs = document.querySelector('.dashboard-tabs') as HTMLDivElement | null;
+const correctionsContent = document.getElementById('corrections-content') as HTMLDivElement | null;
+const instructionsContent = document.getElementById('instructions-content') as HTMLDivElement | null;
+const correctionsSearchInput = document.getElementById('corrections-search-input') as HTMLInputElement | null;
+const correctionsList = document.getElementById('corrections-list') as HTMLDivElement | null;
 const trainForm = document.getElementById('train-form') as HTMLFormElement | null;
-const instructionTextarea = document.getElementById('instruction-textarea') as HTMLTextAreaElement | null;
 const saveInstructionsButton = document.getElementById('save-instructions-button') as HTMLButtonElement | null;
 
 
@@ -65,13 +69,15 @@ interface Message {
 }
 let messages: Message[] = [];
 let editingMessageId: string | null = null;
+let editingCorrectionId: number | null = null;
 
 let isLoginMode = true;
 let currentUser: User | null = null;
 const ADMIN_EMAIL = 'sidiyacheikh2023@gmail.com';
 let chat: Chat;
-let currentSystemInstruction: string = '';
+let currentInstructionParts: InstructionParts = getDefaultInstructionParts();
 let currentCorrectionExamples: any[] = [];
+let allCorrectionsData: any[] = []; // For dashboard filtering
 
 
 // --- Live Call State ---
@@ -239,8 +245,8 @@ async function initializeChat() {
     authModalDescription, authSubmitButton, confirmPasswordWrapper,
     confirmPasswordInput, toSignupSwitch, toLoginSwitch, switchToSignupLink,
     switchToLoginLink, logoutButton, emailInput, passwordInput,
-    adminTrainButton, trainModal, trainModalBackdrop, trainModalCloseButton,
-    trainForm, instructionTextarea, saveInstructionsButton
+    adminDashboardButton, adminDashboard, adminDashboardBackdrop, adminDashboardCloseButton,
+    trainForm, saveInstructionsButton
   ];
 
   if (essentialElements.some(el => !el)) {
@@ -251,16 +257,12 @@ async function initializeChat() {
     return;
   }
   
-  // Fix: Moved appendMessage and other function definitions inside initializeChat scope
-  // to resolve scope issues and improve code organization.
-  // === START OF CONSOLIDATED FUNCTION DEFINITIONS ===
-
-  // Fix: Declare `ai` in a scope accessible by all helper functions. It will be initialized inside the `try` block.
   let ai: GoogleGenAI;
 
-  // Fix: Moved function definitions from the `try` block to a shared scope to resolve "Cannot find name" errors.
   function reinitializeChat() {
-      const fullInstruction = constructInstructionWithExamples(currentSystemInstruction, currentCorrectionExamples);
+      const baseInstruction = assembleInstructionFromParts(currentInstructionParts);
+      const fullInstruction = constructInstructionWithExamples(baseInstruction, currentCorrectionExamples);
+      
       chat = ai.chats.create({
           model: 'gemini-2.5-flash',
           config: { systemInstruction: fullInstruction },
@@ -270,35 +272,73 @@ async function initializeChat() {
       console.log("Chat reinitialized with new instructions and examples.");
   }
 
-  async function fetchInstructionsAndCorrections() {
+  async function fetchInstructionsAndCorrections(isForDashboard = false) {
+      if (isForDashboard && correctionsList) {
+          correctionsList.innerHTML = '<div class="loading-indicator" style="margin: auto;"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>';
+      }
+
       const instructionPromise = supabase
           .from('system_instructions')
-          .select('instruction_text')
+          .select('instruction_parts')
           .eq('id', 1)
           .single();
 
       const correctionsPromise = supabase
           .from('message_corrections')
-          .select('user_prompt, original_response, corrected_message');
+          .select('id, user_prompt, original_response, corrected_message')
+          .order('created_at', { ascending: false });
 
       const [instructionResult, correctionsResult] = await Promise.all([
           instructionPromise,
           correctionsPromise
       ]);
       
-      if (instructionResult.error || !instructionResult.data) {
-          currentSystemInstruction = getSystemInstruction();
+      if (instructionResult.error) {
+          console.warn("Could not fetch instruction parts from Supabase. Using defaults.", instructionResult.error);
+          currentInstructionParts = getDefaultInstructionParts();
+
+          // FIX: Show a detailed alert to the admin if the table is missing by checking the error code.
+          if (currentUser?.email === ADMIN_EMAIL && instructionResult.error.code === 'PGRST205') {
+              alert(
+                  'خطأ في قاعدة البيانات: الجدول "system_instructions" غير موجود.\n\n' +
+                  'كمدير، يجب عليك تشغيل كود SQL التالي في محرر Supabase لإصلاح المشكلة:\n\n' +
+                  '-- 1. Create the table for segmented instructions\n' +
+                  'CREATE TABLE public.system_instructions (\n' +
+                  '  id BIGINT PRIMARY KEY,\n' +
+                  '  created_at TIMESTAMPTZ DEFAULT NOW(),\n' +
+                  '  instruction_parts JSONB\n' +
+                  ');\n\n' +
+                  '-- 2. Insert the initial row for the instructions (ID = 1)\n' +
+                  "INSERT INTO public.system_instructions (id, instruction_parts) VALUES (1, '{}'::jsonb);\n\n" +
+                  '-- 3. Enable Row Level Security (Important for security)\n' +
+                  'ALTER TABLE public.system_instructions ENABLE ROW LEVEL SECURITY;\n\n' +
+                  '-- 4. Create a policy that allows everyone to READ the instructions\n' +
+                  'CREATE POLICY "Allow public read access to instructions" ON public.system_instructions FOR SELECT USING (true);\n\n' +
+                  '-- 5. Create a policy that ONLY allows the ADMIN to UPDATE the instructions\n' +
+                  'CREATE POLICY "Allow admin to update instructions" ON public.system_instructions FOR UPDATE TO authenticated USING (auth.email() = \'sidiyacheikh2023@gmail.com\') WITH CHECK (auth.email() = \'sidiyacheikh2023@gmail.com\');'
+              );
+          }
+      } else if (!instructionResult.data || !instructionResult.data.instruction_parts) {
+          console.warn("Instruction parts data is missing or null in Supabase. Using defaults.");
+          currentInstructionParts = getDefaultInstructionParts();
       } else {
-          currentSystemInstruction = instructionResult.data.instruction_text;
+          // Success case: Ensure all parts from default are present in fetched data
+          currentInstructionParts = { ...getDefaultInstructionParts(), ...instructionResult.data.instruction_parts };
       }
 
       if (correctionsResult.error || !correctionsResult.data) {
            currentCorrectionExamples = [];
+           allCorrectionsData = [];
       } else {
           currentCorrectionExamples = correctionsResult.data;
+          allCorrectionsData = correctionsResult.data;
       }
-
-      reinitializeChat();
+      
+      if(isForDashboard) {
+          renderDashboardCorrections();
+      } else {
+        reinitializeChat();
+      }
   }
 
   async function handleSendMessage(event: Event) {
@@ -372,6 +412,11 @@ async function initializeChat() {
       inputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
       outputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
       
+      const systemInstructionText = constructInstructionWithExamples(
+          assembleInstructionFromParts(currentInstructionParts),
+          currentCorrectionExamples
+      );
+
       sessionPromise = aiInstance.live.connect({
           model: 'gemini-2.5-flash-native-audio-preview-09-2025',
           callbacks: {
@@ -433,7 +478,7 @@ async function initializeChat() {
               responseModalities: [Modality.AUDIO],
               inputAudioTranscription: {},
               outputAudioTranscription: {},
-              systemInstruction: constructInstructionWithExamples(currentSystemInstruction, currentCorrectionExamples),
+              systemInstruction: systemInstructionText,
               speechConfig: {
                 voiceConfig: { prebuiltVoiceConfig: { voiceName: selectedVoice } },
               },
@@ -526,20 +571,31 @@ async function initializeChat() {
             content.textContent = msg.text;
             wrapper.appendChild(content);
 
-            if (msg.sender === 'ai' && currentUser?.email === ADMIN_EMAIL && msg.userPrompt) {
+            // Show actions (edit/report) for AI messages if a user is logged in
+            if (msg.sender === 'ai' && currentUser && msg.userPrompt) {
                 const actions = document.createElement('div');
                 actions.className = 'message-actions';
-                
-                const editButton = document.createElement('button');
-                editButton.className = 'edit-btn';
-                editButton.setAttribute('aria-label', 'تعديل الرسالة');
-                editButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" height="18px" viewBox="0 0 24 24" width="18px" fill="currentColor"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M14.06 9.02l.92.92L5.92 19H5v-.92l9.06-9.06M17.66 3c-.25 0-.51.1-.7.29l-1.83 1.83 3.75 3.75 1.83-1.83c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.2-.2-.45-.29-.71-.29zm-3.6 3.19L3 17.25V21h3.75L17.81 9.94l-3.75-3.75z"/></svg>`;
-                editButton.onclick = () => {
-                    editingMessageId = msg.id;
-                    renderMessages();
-                };
 
-                actions.appendChild(editButton);
+                if (currentUser.email === ADMIN_EMAIL) {
+                    // Admin sees the Edit button
+                    const editButton = document.createElement('button');
+                    editButton.className = 'edit-btn';
+                    editButton.setAttribute('aria-label', 'تعديل الرسالة');
+                    editButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" height="18px" viewBox="0 0 24 24" width="18px" fill="currentColor"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M14.06 9.02l.92.92L5.92 19H5v-.92l9.06-9.06M17.66 3c-.25 0-.51.1-.7.29l-1.83 1.83 3.75 3.75 1.83-1.83c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.2-.2-.45-.29-.71-.29zm-3.6 3.19L3 17.25V21h3.75L17.81 9.94l-3.75-3.75z"/></svg>`;
+                    editButton.onclick = () => {
+                        editingMessageId = msg.id;
+                        renderMessages();
+                    };
+                    actions.appendChild(editButton);
+                } else {
+                    // Other logged-in users see the Report button
+                    const reportButton = document.createElement('button');
+                    reportButton.className = 'report-btn';
+                    reportButton.setAttribute('aria-label', 'الإبلاغ عن رد');
+                    reportButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" height="18px" viewBox="0 0 24 24" width="18px" fill="currentColor"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M14.4 6L14 4H5v17h2v-7h5.6l.4 2h7V6h-5.6z"/></svg>`;
+                    // The onclick is handled by the event listener on chatMessages
+                    actions.appendChild(reportButton);
+                }
                 wrapper.appendChild(actions);
             }
         }
@@ -552,6 +608,55 @@ async function initializeChat() {
       editingMessageId = null;
       renderMessages();
   }
+
+  async function handleReportMessage(messageId: string, buttonElement: HTMLButtonElement) {
+    const messageToReport = messages.find(m => m.id === messageId);
+    if (!messageToReport || !messageToReport.userPrompt) {
+        alert('لا يمكن الإبلاغ عن هذه الرسالة.');
+        return;
+    }
+
+    buttonElement.disabled = true;
+
+    const { error } = await supabase
+        .from('review_suggestions')
+        .insert({
+            user_prompt: messageToReport.userPrompt,
+            reported_response: messageToReport.text,
+        });
+
+    if (error) {
+        console.error('Failed to save suggestion:', error.message);
+        if (currentUser?.email === ADMIN_EMAIL && error.message.includes("does not exist")) {
+            alert(
+                'فشل الإبلاغ: الجدول "review_suggestions" غير موجود.\n\n' +
+                'كمدير، قم بتشغيل كود SQL التالي في محرر Supabase:\n\n' +
+                'CREATE TABLE public.review_suggestions (\n' +
+                '  id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,\n' +
+                '  created_at TIMESTAMPTZ DEFAULT NOW(),\n' +
+                '  user_prompt TEXT,\n' +
+                '  reported_response TEXT NOT NULL\n' +
+                ');\n\n' +
+                '-- Enable RLS\n' +
+                'ALTER TABLE public.review_suggestions ENABLE ROW LEVEL SECURITY;\n\n' +
+                '-- Allow logged-in users to create suggestions\n' +
+                'CREATE POLICY "Allow authenticated users to insert suggestions" \n' +
+                'ON public.review_suggestions FOR INSERT \n' +
+                'TO authenticated WITH CHECK (true);'
+            );
+        } else {
+            alert('فشل إرسال البلاغ: ' + error.message);
+        }
+        buttonElement.disabled = false; // Re-enable if failed
+        return;
+    }
+
+    // Success visual feedback
+    buttonElement.classList.add('reported');
+    buttonElement.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" height="18px" viewBox="0 0 24 24" width="18px" fill="currentColor"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>`;
+    buttonElement.setAttribute('aria-label', 'تم الإبلاغ');
+}
+
 
   async function handleSaveCorrection(messageId: string, correctedText: string) {
       const originalMessage = messages.find(m => m.id === messageId);
@@ -603,14 +708,14 @@ async function initializeChat() {
           signupButton?.classList.add('hidden');
           logoutButton?.classList.remove('hidden');
           if (currentUser.email === ADMIN_EMAIL) {
-              adminTrainButton?.classList.remove('hidden');
+              adminDashboardButton?.classList.remove('hidden');
           } else {
-              adminTrainButton?.classList.add('hidden');
+              adminDashboardButton?.classList.add('hidden');
           }
       } else {
           signupButton?.classList.remove('hidden');
           logoutButton?.classList.add('hidden');
-          adminTrainButton?.classList.add('hidden');
+          adminDashboardButton?.classList.add('hidden');
       }
       renderMessages(); // Re-render messages to show/hide edit buttons
   }
@@ -621,7 +726,7 @@ async function initializeChat() {
           console.error('Error logging out:', error.message);
           alert('حدث خطأ أثناء تسجيل الخروج.');
       }
-      adminTrainButton?.classList.add('hidden');
+      adminDashboardButton?.classList.add('hidden');
   }
 
   // --- Auth Modal Logic ---
@@ -666,30 +771,129 @@ async function initializeChat() {
       }, 300);
   }
 
-  // --- Admin Training Modal Logic ---
-  function showTrainModal() {
-      instructionTextarea!.value = currentSystemInstruction;
-      trainModalBackdrop?.classList.remove('hidden');
-      trainModal?.classList.remove('hidden');
+  // --- Admin Dashboard Logic ---
+  function renderDashboardCorrections(filter: string = '') {
+      if (!correctionsList) return;
+      const lowerCaseFilter = filter.toLowerCase();
+
+      const filteredData = allCorrectionsData.filter(c =>
+          c.user_prompt?.toLowerCase().includes(lowerCaseFilter) ||
+          c.original_response?.toLowerCase().includes(lowerCaseFilter) ||
+          c.corrected_message?.toLowerCase().includes(lowerCaseFilter)
+      );
+
+      if (filteredData.length === 0) {
+          correctionsList.innerHTML = `<p style="text-align: center; opacity: 0.7;">لا توجد تصحيحات مطابقة.</p>`;
+          return;
+      }
+
+      correctionsList.innerHTML = filteredData.map(correction => {
+        const isEditing = correction.id === editingCorrectionId;
+
+        return `
+          <div class="correction-card ${isEditing ? 'is-editing' : ''}" data-id="${correction.id}">
+              <div class="correction-card-section">
+                  <label>سؤال المستخدم</label>
+                  ${isEditing 
+                    ? `<textarea data-field="user_prompt">${correction.user_prompt || ''}</textarea>` 
+                    : `<p>${correction.user_prompt || ''}</p>`}
+              </div>
+              <div class="correction-card-section">
+                  <label>الرد الأصلي</label>
+                  ${isEditing 
+                    ? `<textarea data-field="original_response">${correction.original_response || ''}</textarea>` 
+                    : `<p>${correction.original_response || ''}</p>`}
+              </div>
+              <div class="correction-card-section">
+                  <label>الرد المصحح</label>
+                   ${isEditing 
+                    ? `<textarea data-field="corrected_message">${correction.corrected_message || ''}</textarea>` 
+                    : `<p>${correction.corrected_message || ''}</p>`}
+              </div>
+              <div class="correction-card-actions">
+                  ${isEditing 
+                    ? `
+                        <button class="save-correction-btn">حفظ</button>
+                        <button class="cancel-correction-btn">إلغاء</button>
+                    ` 
+                    : `
+                        <button class="edit-correction-btn">تعديل</button>
+                        <button class="delete-correction-btn">حذف</button>
+                    `}
+              </div>
+          </div>
+        `;
+    }).join('');
+  }
+
+  async function handleDeleteCorrection(id: number) {
+      if (!confirm(`هل أنت متأكد من رغبتك في حذف هذا التصحيح؟ لا يمكن التراجع عن هذا الإجراء.`)) return;
+
+      const { error } = await supabase.from('message_corrections').delete().eq('id', id);
+      if (error) {
+          alert('فشل حذف التصحيح: ' + error.message);
+      } else {
+          await fetchInstructionsAndCorrections(true); // Refresh dashboard
+          await reinitializeChat(); // Re-init chat with new data
+          alert('تم حذف التصحيح بنجاح.');
+      }
+  }
+
+  async function handleSaveCorrectionUpdate(id: number, cardElement: HTMLDivElement) {
+    const updates = {
+        user_prompt: (cardElement.querySelector('textarea[data-field="user_prompt"]') as HTMLTextAreaElement).value,
+        original_response: (cardElement.querySelector('textarea[data-field="original_response"]') as HTMLTextAreaElement).value,
+        corrected_message: (cardElement.querySelector('textarea[data-field="corrected_message"]') as HTMLTextAreaElement).value,
+    };
+
+    if (!updates.user_prompt || !updates.corrected_message) {
+        alert('"سؤال المستخدم" و "الرد المصحح" لا يمكن أن يكونا فارغين.');
+        return;
+    }
+
+    const { error } = await supabase
+        .from('message_corrections')
+        .update(updates)
+        .eq('id', id);
+
+    if (error) {
+        alert('فشل تحديث التصحيح: ' + error.message);
+    } else {
+        editingCorrectionId = null; 
+        await fetchInstructionsAndCorrections(true); 
+        reinitializeChat(); 
+        alert('تم تحديث التصحيح بنجاح.');
+    }
+}
+
+
+  function showAdminDashboard() {
+      // Populate the form with the current instruction parts
+      for (const key in currentInstructionParts) {
+        const textarea = trainForm?.querySelector(`textarea[data-part="${key}"]`) as HTMLTextAreaElement;
+        if (textarea) {
+            textarea.value = currentInstructionParts[key as keyof InstructionParts] || '';
+        }
+      }
+      fetchInstructionsAndCorrections(true);
+      adminDashboardBackdrop?.classList.remove('hidden');
+      adminDashboard?.classList.remove('hidden');
       setTimeout(() => {
-          trainModalBackdrop?.classList.add('show');
-          trainModal?.classList.add('show');
+          adminDashboardBackdrop?.classList.add('show');
+          adminDashboard?.classList.add('show');
       }, 10);
   }
 
-  function hideTrainModal() {
-      trainModalBackdrop?.classList.remove('show');
-      trainModal?.classList.remove('show');
+  function hideAdminDashboard() {
+      adminDashboardBackdrop?.classList.remove('show');
+      adminDashboard?.classList.remove('show');
       setTimeout(() => {
-          trainModalBackdrop?.classList.add('hidden');
-          trainModal?.classList.add('hidden');
+          adminDashboardBackdrop?.classList.add('hidden');
+          adminDashboard?.classList.add('hidden');
       }, 300);
   }
 
-  // === END OF CONSOLIDATED FUNCTION DEFINITIONS ===
-
   try {
-    // --- Auth State Initialization ---
     const { data: { session } } = await supabase.auth.getSession();
     currentUser = session?.user ?? null;
     updateAuthStateUI();
@@ -699,7 +903,6 @@ async function initializeChat() {
         updateAuthStateUI();
     });
 
-    // Fix: Initialize the `ai` variable that was declared in the outer scope.
     ai = new GoogleGenAI({ apiKey: 'AIzaSyAKGB7rK2n6BSXz14C3v_Vj7V8saogNM64' });
     
     await fetchInstructionsAndCorrections();
@@ -717,6 +920,18 @@ async function initializeChat() {
     authModalBackdrop!.addEventListener('click', hideAuthModal);
     switchToSignupLink!.addEventListener('click', (e) => { e.preventDefault(); isLoginMode = false; updateAuthModalView(); });
     switchToLoginLink!.addEventListener('click', (e) => { e.preventDefault(); isLoginMode = true; updateAuthModalView(); });
+
+    chatMessages!.addEventListener('click', e => {
+        const target = e.target as HTMLElement;
+        const reportButton = target.closest('.report-btn') as HTMLButtonElement | null;
+        if (reportButton && !reportButton.disabled) {
+            const messageWrapper = target.closest('.message-wrapper') as HTMLDivElement;
+            const messageId = messageWrapper?.dataset.messageId;
+            if (messageId) {
+                handleReportMessage(messageId, reportButton);
+            }
+        }
+    });
 
     authForm!.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -759,42 +974,91 @@ async function initializeChat() {
         updateAuthModalView();
     });
 
-    adminTrainButton!.addEventListener('click', showTrainModal);
-    trainModalCloseButton!.addEventListener('click', hideTrainModal);
-    trainModalBackdrop!.addEventListener('click', hideTrainModal);
+    // --- Dashboard Event Listeners ---
+    adminDashboardButton!.addEventListener('click', showAdminDashboard);
+    adminDashboardCloseButton!.addEventListener('click', hideAdminDashboard);
+    adminDashboardBackdrop!.addEventListener('click', hideAdminDashboard);
+    
+    dashboardTabs!.addEventListener('click', e => {
+        const target = e.target as HTMLButtonElement;
+        if (target.matches('.tab-button')) {
+            const tabName = target.dataset.tab;
+            dashboardTabs!.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            target.classList.add('active');
+            document.getElementById(`${tabName}-content`)?.classList.add('active');
+        }
+    });
+
+    correctionsSearchInput!.addEventListener('input', e => {
+        renderDashboardCorrections((e.target as HTMLInputElement).value);
+    });
+
+    correctionsList!.addEventListener('click', async e => {
+        const target = e.target as HTMLElement;
+        const card = target.closest('.correction-card') as HTMLDivElement;
+        if (!card) return;
+
+        const id = parseInt(card.dataset.id!, 10);
+
+        if (target.matches('.delete-correction-btn')) {
+            handleDeleteCorrection(id);
+        } else if (target.matches('.edit-correction-btn')) {
+            editingCorrectionId = id;
+            renderDashboardCorrections((correctionsSearchInput as HTMLInputElement).value);
+        } else if (target.matches('.cancel-correction-btn')) {
+            editingCorrectionId = null;
+            renderDashboardCorrections((correctionsSearchInput as HTMLInputElement).value);
+        } else if (target.matches('.save-correction-btn')) {
+            await handleSaveCorrectionUpdate(id, card);
+        }
+    });
+
+
     trainForm!.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const newInstructions = instructionTextarea!.value.trim();
-        if (!newInstructions) return alert('لا يمكن أن تكون التعليمات فارغة.');
+        
+        const newInstructionParts = { ...getDefaultInstructionParts() };
+        let hasChanges = false;
+        trainForm!.querySelectorAll('textarea[data-part]').forEach(textareaEl => {
+            const textarea = textareaEl as HTMLTextAreaElement;
+            const partKey = textarea.dataset.part as keyof InstructionParts;
+            if (partKey in newInstructionParts) {
+                newInstructionParts[partKey] = textarea.value;
+                hasChanges = true;
+            }
+        });
+
+        if (!hasChanges) return alert('لم يتم إجراء أي تغييرات.');
 
         saveInstructionsButton!.disabled = true;
         saveInstructionsButton!.textContent = '...جاري الحفظ';
 
         const { error } = await supabase
             .from('system_instructions')
-            .upsert({ id: 1, instruction_text: newInstructions });
+            .upsert({ id: 1, instruction_parts: newInstructionParts });
 
         if (error) {
             console.error('Failed to save instructions:', error.message);
-            if (error.message.includes("does not exist")) {
+            if (error.message.includes("does not exist") || error.message.includes("instruction_parts")) {
                  alert(
-                    'فشل الحفظ: الجدول "system_instructions" غير موجود.\n\n' +
+                    'فشل الحفظ: يبدو أن بنية الجدول قديمة.\n\n' +
                     'لإصلاح هذا، قم بتشغيل كود SQL التالي في محرر Supabase:\n\n' +
-                    'CREATE TABLE public.system_instructions (\n' +
-                    '  id BIGINT PRIMARY KEY,\n' +
-                    '  instruction_text TEXT\n' +
-                    ');\n\n' +
-                    "INSERT INTO public.system_instructions (id, instruction_text) VALUES (1, 'Your default instructions here...');\n\n" +
-                    'ملاحظة: تأكد من أن سياسات RLS تسمح بعملية "upsert".'
+                    '-- Step 1: Drop old column if it exists\n' +
+                    'ALTER TABLE public.system_instructions DROP COLUMN IF EXISTS instruction_text;\n\n' +
+                    '-- Step 2: Add new JSONB column\n' +
+                    'ALTER TABLE public.system_instructions ADD COLUMN IF NOT EXISTS instruction_parts JSONB;\n\n' +
+                     '-- Step 3: Insert initial empty data if table is empty\n' +
+                    "INSERT INTO public.system_instructions (id, instruction_parts) SELECT 1, '{}'::jsonb WHERE NOT EXISTS (SELECT 1 FROM public.system_instructions WHERE id = 1);"
                 );
             } else {
                 alert('فشل حفظ التعليمات: ' + error.message);
             }
         } else {
             // Success
-            currentSystemInstruction = newInstructions;
+            currentInstructionParts = newInstructionParts;
             reinitializeChat();
-            hideTrainModal();
+            hideAdminDashboard();
             setTimeout(() => appendMessage('تم تحديث التعليمات بنجاح.', 'ai'), 300);
         }
 
