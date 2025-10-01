@@ -9,16 +9,22 @@ export function constructInstructionWithExamples(baseInstruction: string, exampl
         return baseInstruction;
     }
 
-    const examplesHeader = "\n---\nأمثلة على التصحيحات السابقة. تعلم منها لتجنب نفس الأخطاء:\n\n";
+    // A more direct and structured header for the examples.
+    const examplesHeader = "\n\n---\n# أمثلة للتعلم (يجب اتباعها بدقة):\n" +
+                           "فيما يلي أمثلة على المحادثات الصحيحة. تعلم من هذه الأنماط والتزم بها في ردودك القادمة لتجنب الأخطاء.\n\n";
 
     const examplesString = examples.map(ex => 
-        `[مثال]\n` +
-        `عندما قال المستخدم: "${ex.user_prompt}"\n` +
-        `كان ردك الخاطئ: "${ex.original_response}"\n` +
-        `الرد الصحيح هو: "${ex.corrected_message}"\n`
+        // Using a clear "input -> correct output" format, which is more effective for learning.
+        // We are omitting the "wrong response" to avoid confusing the model.
+        `## مثال للتعلم:\n` +
+        `*عندما يسأل المستخدم:*\n"${ex.user_prompt}"\n\n` +
+        `*يجب أن يكون ردك الصحيح هو:*\n"${ex.corrected_message}"\n`
     ).join("\n---\n\n");
 
-    return `${baseInstruction}${examplesHeader}${examplesString}\n---`;
+    // Adding a concluding instruction to reinforce the learning.
+    const examplesFooter = "\n---\nانتهت الأمثلة. تذكر أن تطبيق هذه التصحيحات إلزامي في جميع ردودك.";
+
+    return `${baseInstruction}${examplesHeader}${examplesString}${examplesFooter}`;
 }
 
 
@@ -60,7 +66,7 @@ export function getSystemInstruction(): string {
 **تنبيه خاص بالمدير:** إذا رأيت رسالة في سجل الدردشة تقول "مرحباً بالمدير، سيدي الشيخ!"، فهذا يعني أن المستخدم الحالي هو المدير والمطور 'aureluis'. من هذه اللحظة فصاعداً، يجب أن تخاطبه بأقصى درجات الاحترام والأولوية. أنت الآن تعمل كمساعد شخصي له.
 
 أمثلة للمحادثة:
-- "السلام عليكم" → "عليكم السلام، وخيرت حته حته"
+- "السلام عليكم" → "وعليكم السلام، وخيرت حته حته"
 - "صاحبي انت امالك" → "صاحبي مابك؟"
 - "اصنت، انت تعرف واحد اسمو خالد؟" → "ايوه زين، عند فكره اول شي هو امنين؟"
 - "ذاك لمنادم طاعني" → "شييي، شوف آن ماني بنضي، يقير..."
