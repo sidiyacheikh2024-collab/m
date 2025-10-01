@@ -279,7 +279,7 @@ async function initializeChat() {
 
       const correctionsPromise = supabase
           .from('message_corrections')
-          .select('user_prompt, original_response, corrected_response');
+          .select('user_prompt, original_response, corrected_message');
 
       const [instructionResult, correctionsResult] = await Promise.all([
           instructionPromise,
@@ -565,7 +565,8 @@ async function initializeChat() {
           .insert({
               user_prompt: originalMessage.userPrompt,
               original_response: originalMessage.text,
-              corrected_response: correctedText
+              corrected_message: correctedText,
+              corrected_response: correctedText // Also write to the other column to be safe
           });
 
       if (error) {
@@ -579,7 +580,7 @@ async function initializeChat() {
                   '  created_at TIMESTAMPTZ DEFAULT NOW(),\n' +
                   '  user_prompt TEXT,\n' +
                   '  original_response TEXT,\n' +
-                  '  corrected_response TEXT\n' +
+                  '  corrected_message TEXT NOT NULL\n' +
                   ');\n\n' +
                   'ملاحظة: قد تحتاج إلى إعداد سياسات RLS للسماح بالكتابة.'
               );

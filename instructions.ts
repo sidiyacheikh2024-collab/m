@@ -1,7 +1,7 @@
 export type CorrectionExample = {
     user_prompt: string;
     original_response: string;
-    corrected_response: string;
+    corrected_message: string;
 }
 
 export function constructInstructionWithExamples(baseInstruction: string, examples: CorrectionExample[]): string {
@@ -15,7 +15,7 @@ export function constructInstructionWithExamples(baseInstruction: string, exampl
         `[مثال]\n` +
         `عندما قال المستخدم: "${ex.user_prompt}"\n` +
         `كان ردك الخاطئ: "${ex.original_response}"\n` +
-        `الرد الصحيح هو: "${ex.corrected_response}"\n`
+        `الرد الصحيح هو: "${ex.corrected_message}"\n`
     ).join("\n---\n\n");
 
     return `${baseInstruction}${examplesHeader}${examplesString}\n---`;
