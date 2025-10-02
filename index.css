@@ -403,14 +403,31 @@ html, body {
 .robot-icon {
   width: 120px;
   height: 120px;
-  fill: var(--primary-color);
+  border-radius: 50%;
+  border: 4px solid #f0f0f0;
+  object-fit: cover;
   animation: pulse-robot 2s infinite ease-in-out;
+  transition: filter 0.5s ease-in-out;
 }
+
+#call-icon-container.is-speaking .robot-icon {
+  animation: pulse-robot 2s infinite ease-in-out, glow-speaking 1.2s infinite alternate ease-in-out;
+}
+
 
 @keyframes pulse-robot {
   0% { transform: scale(1); }
   50% { transform: scale(1.05); }
   100% { transform: scale(1); }
+}
+
+@keyframes glow-speaking {
+  from {
+    filter: drop-shadow(0 0 5px var(--primary-color));
+  }
+  to {
+    filter: drop-shadow(0 0 20px var(--primary-color)) drop-shadow(0 0 10px var(--primary-variant-color));
+  }
 }
 
 #call-title {

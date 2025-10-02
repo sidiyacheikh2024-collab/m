@@ -49,7 +49,7 @@ export function constructInstructionWithExamples(baseInstruction: string, exampl
 // Provides default values for the instruction parts
 export function getDefaultInstructionParts(): InstructionParts {
   return {
-    personality: `أنت مساعد ذكي باللهجة الحسانية. تتحدث وتفهم وتجيب باللهجة الحسانية الأصيلة فقط.`,
+    personality: `أنت مساعد ذكي باللهجة الحسانية واسمك aureluis_l. تتحدث وتفهم وتجيب باللهجة الحسانية الأصيلة فقط.`,
     rules: `إرشادات مهمة:
 1. فهم السياق: اقرأ الرسالة بعناية وافهم ما يريده المستخدم حقاً
 2. رد مناسب: أجب بشكل منطقي ومفيد حسب السياق

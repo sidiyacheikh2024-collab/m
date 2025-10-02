@@ -17,6 +17,7 @@ const chatInput = document.getElementById('chat-input') as HTMLInputElement | nu
 const sendButton = document.getElementById('send-button') as HTMLButtonElement | null;
 const callScreen = document.getElementById('call-screen') as HTMLDivElement | null;
 const callStatus = document.getElementById('call-status') as HTMLDivElement | null;
+const callIconContainer = document.getElementById('call-icon-container') as HTMLDivElement | null;
 const endCallButton = document.getElementById('end-call-button') as HTMLButtonElement | null;
 const menuButton = document.getElementById('menu-button') as HTMLButtonElement | null;
 const voiceMenu = document.getElementById('voice-menu') as HTMLDivElement | null;
@@ -94,6 +95,13 @@ let selectedVoice: VoiceOption = 'Zephyr'; // Default: female voice
 let callTranscriptHistory: { sender: 'user' | 'ai', text: string }[] = [];
 let currentInputTranscription = '';
 let currentOutputTranscription = '';
+
+// Ringing sound state
+let ringContext: AudioContext | null = null;
+let ringOsc1: OscillatorNode | null = null;
+let ringOsc2: OscillatorNode | null = null;
+let ringGain: GainNode | null = null;
+let ringIntervalId: number | null = null;
 
 
 // --- Helper Functions ---
@@ -234,13 +242,83 @@ function createBlob(data: Float32Array): Blob {
     };
 }
 
+// --- Ringing Sound Helpers ---
+
+function startRinging() {
+    if (ringContext) return; // Already ringing
+
+    try {
+        ringContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+        
+        ringOsc1 = ringContext.createOscillator();
+        ringOsc2 = ringContext.createOscillator();
+        ringGain = ringContext.createGain();
+
+        ringOsc1.type = 'sine';
+        ringOsc1.frequency.value = 440; // Standard European ring tone
+        
+        ringOsc2.type = 'sine';
+        ringOsc2.frequency.value = 480; // Standard European ring tone
+
+        ringOsc1.connect(ringGain);
+        ringOsc2.connect(ringGain);
+        ringGain.connect(ringContext.destination);
+
+        ringGain.gain.setValueAtTime(0, ringContext.currentTime);
+
+        ringOsc1.start();
+        ringOsc2.start();
+
+        const ring = () => {
+            if (!ringContext || !ringGain) return;
+            const now = ringContext.currentTime;
+            // Ring for 1.8s, silent for 2.2s. Total 4s cycle.
+            ringGain.gain.setValueAtTime(0.1, now);
+            ringGain.gain.setValueAtTime(0, now + 1.8);
+        };
+        
+        ring(); // Ring immediately
+        ringIntervalId = window.setInterval(ring, 4000); // Ring every 4 seconds
+    } catch(e) {
+        console.error("Could not start ringing sound:", e);
+        // Ensure cleanup if something fails
+        stopRinging();
+    }
+}
+
+function stopRinging() {
+    if (ringIntervalId) {
+        clearInterval(ringIntervalId);
+        ringIntervalId = null;
+    }
+    if (ringContext) {
+        const now = ringContext.currentTime;
+        ringGain?.gain.cancelScheduledValues(now);
+        // Fade out smoothly over 0.2s
+        ringGain?.gain.setValueAtTime(ringGain.gain.value, now);
+        ringGain?.gain.linearRampToValueAtTime(0, now + 0.2); 
+        
+        // Use a timeout to stop everything after the fade-out is complete
+        setTimeout(() => {
+            ringOsc1?.stop();
+            ringOsc2?.stop();
+            ringContext?.close().catch(console.error);
+
+            ringContext = null;
+            ringOsc1 = null;
+            ringOsc2 = null;
+            ringGain = null;
+        }, 300);
+    }
+}
+
 
 // --- Main Application Logic ---
 async function initializeChat() {
   const essentialElements = [
     chatContainer, chatMessages, chatForm, chatInput, sendButton,
     callScreen, callStatus, endCallButton, menuButton, voiceMenu,
-    callTranscriptContainer, callTranscriptText, signupButton, authModal,
+    callIconContainer, callTranscriptContainer, callTranscriptText, signupButton, authModal,
     authModalBackdrop, authModalCloseButton, authForm, authModalTitle,
     authModalDescription, authSubmitButton, confirmPasswordWrapper,
     confirmPasswordInput, toSignupSwitch, toLoginSwitch, switchToSignupLink,
@@ -395,15 +473,18 @@ async function initializeChat() {
       mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
       callScreen!.style.display = 'flex';
       callStatus!.textContent = 'جاري الاتصال...';
+      startRinging();
 
       setTimeout(() => {
-          if (!mediaStream) return;
+          if (!mediaStream) return; // Call might have been ended during ringing
+          stopRinging();
           callStatus!.textContent = 'متصل';
           initializeLiveSession(ai);
-      }, 1500);
+      }, 4000); // Wait 4s to simulate connection and allow for one ring cycle
 
     } catch (err) {
       console.error("Error accessing microphone:", err);
+      stopRinging(); // Clean up ringing on error
       alert("لا يمكن الوصول إلى الميكروفون. يرجى التحقق من الأذونات.");
     }
   }
@@ -416,6 +497,9 @@ async function initializeChat() {
           assembleInstructionFromParts(currentInstructionParts),
           currentCorrectionExamples
       );
+
+      const callInstructionPrefix = `أنت الآن في مكالمة صوتية مباشرة. شخصيتك هي شخص ودود يتحدث الحسانية بطلاقة وبشكل طبيعي. كن مرحباً وتفاعلياً بشكل خاص. التعليمات التفصيلية الخاصة بك هي التالية:\n\n`;
+      const finalCallInstruction = callInstructionPrefix + systemInstructionText;
 
       sessionPromise = aiInstance.live.connect({
           model: 'gemini-2.5-flash-native-audio-preview-09-2025',
@@ -436,6 +520,7 @@ async function initializeChat() {
               onmessage: async (message: LiveServerMessage) => {
                   const base64EncodedAudioString = message.serverContent?.modelTurn?.parts[0]?.inlineData.data;
                   if (base64EncodedAudioString) {
+                      callIconContainer?.classList.add('is-speaking');
                       nextStartTime = Math.max(nextStartTime, outputAudioContext!.currentTime);
                       const audioBuffer = await decodeAudioData(
                           decode(base64EncodedAudioString),
@@ -444,7 +529,12 @@ async function initializeChat() {
                       const sourceNode = outputAudioContext!.createBufferSource();
                       sourceNode.buffer = audioBuffer;
                       sourceNode.connect(outputAudioContext!.destination);
-                      sourceNode.addEventListener('ended', () => { sources.delete(sourceNode); });
+                      sourceNode.addEventListener('ended', () => { 
+                          sources.delete(sourceNode);
+                          if (sources.size === 0) {
+                              callIconContainer?.classList.remove('is-speaking');
+                          }
+                      });
                       sourceNode.start(nextStartTime);
                       nextStartTime += audioBuffer.duration;
                       sources.add(sourceNode);
@@ -455,6 +545,7 @@ async function initializeChat() {
                           sources.delete(source);
                       }
                       nextStartTime = 0;
+                      callIconContainer?.classList.remove('is-speaking');
                   }
                   if (message.serverContent?.outputTranscription) {
                       currentOutputTranscription += message.serverContent.outputTranscription.text;
@@ -478,7 +569,7 @@ async function initializeChat() {
               responseModalities: [Modality.AUDIO],
               inputAudioTranscription: {},
               outputAudioTranscription: {},
-              systemInstruction: systemInstructionText,
+              systemInstruction: finalCallInstruction,
               speechConfig: {
                 voiceConfig: { prebuiltVoiceConfig: { voiceName: selectedVoice } },
               },
@@ -487,6 +578,8 @@ async function initializeChat() {
   }
 
   function endCall() {
+    stopRinging(); // Stop ringing sound if call is ended during connection phase
+
     if (sessionPromise) {
       sessionPromise.then(session => session.close()).catch(console.error);
       sessionPromise = null;
@@ -506,6 +599,8 @@ async function initializeChat() {
     sources.forEach(source => source.stop());
     sources.clear();
     nextStartTime = 0;
+    callIconContainer?.classList.remove('is-speaking');
+
 
     if (currentInputTranscription.trim()) callTranscriptHistory.push({ sender: 'user', text: currentInputTranscription.trim() });
     if (currentOutputTranscription.trim()) callTranscriptHistory.push({ sender: 'ai', text: currentOutputTranscription.trim() });
