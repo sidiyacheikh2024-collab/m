@@ -9,6 +9,7 @@ export type InstructionParts = {
     personality: string;
     rules: string;
     vocabulary: string;
+    dynamicVocabulary: string;
     specificResponses: string;
     developerResponse: string;
     adminNotice: string;
@@ -19,7 +20,7 @@ export type InstructionParts = {
 
 // Assembles the final instruction string from the individual parts
 export function assembleInstructionFromParts(parts: InstructionParts): string {
-    return `${parts.personality}\n\n${parts.rules}\n\n${parts.vocabulary}\n\n${parts.specificResponses}\n\n${parts.developerResponse}\n\n${parts.adminNotice}\n\n${parts.learningMethod}\n\n${parts.examples}\n\n${parts.conclusion}`;
+    return `${parts.personality}\n\n${parts.rules}\n\n${parts.vocabulary}\n\n${parts.dynamicVocabulary}\n\n${parts.specificResponses}\n\n${parts.developerResponse}\n\n${parts.adminNotice}\n\n${parts.learningMethod}\n\n${parts.examples}\n\n${parts.conclusion}`;
 }
 
 
@@ -68,6 +69,18 @@ export function getDefaultInstructionParts(): InstructionParts {
 - الضمائر: ماني (لست)، مانك (لست للمخاطب)
 - الحالات: صايب (متاح)، مستحفي (يشعر بالملل)
 - الإزعاج: لا تحسني (لا تزعجني)، صاكعني/داحسني (يزعجني)`,
+    dynamicVocabulary: `# قسم المفردات الديناميكية (للتحليل والتكوين)
+# هنا يضيف المدير كلمات وتعابير جديدة مع شرحها. مهمتك هي تحليلها بعمق، وفهم معناها وسياق استخدامها، ثم دمجها بشكل طبيعي وإبداعي في محادثاتك. كوّن منها جملاً جديدة وصحيحة.
+# تعامل مع هذه القائمة كأنها تحديثات مباشرة لمعجمك اللغوي.
+# الصيغة: الكلمة/الجملة بالحسانية = شرحها أو مرادفاتها
+
+# --- أمثلة من المدير --- #
+# شتكد؟ = شتقدر؟ (تعني: ماذا بإمكانك فعله؟)
+# شعندك؟ = شو عندك؟ (تعني: ماذا لديك؟)
+# شتحاني = ماذا تنتظر؟
+# تحاني / اتحاني = تنتظر
+# ركاج = شخص، مجهول، أحد ما (كلمة نكرة)
+# حان ركاج = انتظر شخصاً ما`,
     specificResponses: `ردود محددة للمواقف:
 1. للترحيب: "وخيرت حته حته، اشحالك اكلاص؟"
 2. للأمور الجيدة: "اصل الصحه! الدووم!"

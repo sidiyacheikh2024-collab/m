@@ -266,9 +266,6 @@ function startRinging() {
 
         ringGain.gain.setValueAtTime(0, ringContext.currentTime);
 
-        ringOsc1.start();
-        ringOsc2.start();
-
         const ring = () => {
             if (!ringContext || !ringGain) return;
             const now = ringContext.currentTime;
@@ -336,6 +333,21 @@ async function initializeChat() {
   }
   
   let ai: GoogleGenAI;
+
+  function getAdminWelcomeMessage(): string {
+      const adminNotice = currentInstructionParts.adminNotice;
+      // Regex to find the text between "تقول \"" and "\"،"
+      // Example: ... تقول "مرحباً بالمدير، سيدي الشيخ!"، فهذا يعني ...
+      const regex = /تقول "([^"]+)"،/;
+      const match = adminNotice.match(regex);
+
+      if (match && match[1]) {
+          return match[1]; // Return the captured group (e.g., "مرحباً بالمدير، سيدي الشيخ!")
+      }
+
+      // Fallback message if parsing fails for any reason.
+      return 'مرحباً بالمدير!';
+  }
 
   function reinitializeChat() {
       const baseInstruction = assembleInstructionFromParts(currentInstructionParts);
@@ -841,6 +853,7 @@ async function initializeChat() {
           confirmPasswordWrapper!.classList.remove('hidden');
           confirmPasswordInput!.required = true;
           toSignupSwitch!.classList.add('hidden');
+          // Fix: Use classList.remove to modify classes, not Element.prototype.remove which removes the element.
           toLoginSwitch!.classList.remove('hidden');
       }
   }
@@ -1010,7 +1023,9 @@ async function initializeChat() {
     });
     endCallButton!.addEventListener('click', endCall);
     signupButton!.addEventListener('click', showAuthModal);
-    logoutButton!.addEventListener('click', handleLogout);
+    // Fix: The event listener passes an event object to `handleLogout`, which expects 0 arguments.
+    // Wrapping it in an arrow function ensures it's called correctly and fixes the error.
+    logoutButton!.addEventListener('click', () => handleLogout());
     authModalCloseButton!.addEventListener('click', hideAuthModal);
     authModalBackdrop!.addEventListener('click', hideAuthModal);
     switchToSignupLink!.addEventListener('click', (e) => { e.preventDefault(); isLoginMode = false; updateAuthModalView(); });
@@ -1047,7 +1062,8 @@ async function initializeChat() {
                 if (data.user?.email === ADMIN_EMAIL) playAdminLoginSound();
                 hideAuthModal();
                 if (data.user?.email === ADMIN_EMAIL) {
-                    setTimeout(() => appendMessage('مرحباً بالمدير، سيدي الشيخ!', 'ai'), 300);
+                    const welcomeMessage = getAdminWelcomeMessage();
+                    setTimeout(() => appendMessage(welcomeMessage, 'ai'), 300);
                 }
             }
         } else {
@@ -1097,7 +1113,8 @@ async function initializeChat() {
         const id = parseInt(card.dataset.id!, 10);
 
         if (target.matches('.delete-correction-btn')) {
-            handleDeleteCorrection(id);
+            // Fix: Added 'await' to ensure the async delete operation completes before proceeding.
+            await handleDeleteCorrection(id);
         } else if (target.matches('.edit-correction-btn')) {
             editingCorrectionId = id;
             renderDashboardCorrections((correctionsSearchInput as HTMLInputElement).value);
