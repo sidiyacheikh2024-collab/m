@@ -1,0 +1,16 @@
+{
+  "name": "aureluis_l روبوت الدردشة 🤖",
+  "short_name": "aureluis_l",
+  "description": "A dark-themed AI chat application using the Gemini API.",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#121212",
+  "theme_color": "#1e1e1e",
+  "icons": [
+    {
+      "src": "favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
