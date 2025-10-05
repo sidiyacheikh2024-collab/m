@@ -697,12 +697,15 @@ html, body {
 
 .dashboard-content {
     flex-grow: 1;
-    overflow-y: auto;
+    overflow: hidden; /* Changed from auto to hidden */
 }
 
 .tab-content {
     display: none;
     padding: 20px;
+    height: 100%; /* Fill the container */
+    overflow-y: auto; /* Each tab handles its own scroll */
+    box-sizing: border-box;
 }
 .tab-content.active {
     display: block;
@@ -883,4 +886,16 @@ html, body {
 
 .instruction-part textarea:focus {
     border-color: var(--primary-color);
+}
+
+/* Stats Tab Styles */
+#stats-content {
+    padding: 0;
+    overflow-y: hidden; /* The iframe handles its own scrolling */
+}
+
+#stats-iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
 }
