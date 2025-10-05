@@ -103,8 +103,57 @@ let ringOsc2: OscillatorNode | null = null;
 let ringGain: GainNode | null = null;
 let ringIntervalId: number | null = null;
 
+// --- Audio Feedback State ---
+let audioCtx: AudioContext | null = null;
 
 // --- Helper Functions ---
+
+// --- Audio Feedback Function ---
+function playSound(type: 'send' | 'receive') {
+    try {
+        // Create audio context on first user interaction to comply with autoplay policies
+        if (!audioCtx) {
+            audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        }
+        if (!audioCtx) return; // Still couldn't create it.
+
+        if (audioCtx.state === 'suspended') {
+            audioCtx.resume();
+        }
+
+        const oscillator = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+
+        oscillator.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+
+        const now = audioCtx.currentTime;
+
+        if (type === 'send') {
+            // A short, high-pitched "pop" for sending
+            oscillator.type = 'triangle';
+            oscillator.frequency.setValueAtTime(900, now);
+            gainNode.gain.setValueAtTime(0, now);
+            gainNode.gain.linearRampToValueAtTime(0.2, now + 0.01);
+            gainNode.gain.exponentialRampToValueAtTime(0.00001, now + 0.1);
+        } else { // 'receive'
+            // A slightly lower, softer "blip" for receiving
+            oscillator.type = 'sine';
+            oscillator.frequency.setValueAtTime(700, now);
+            gainNode.gain.setValueAtTime(0, now);
+            gainNode.gain.linearRampToValueAtTime(0.2, now + 0.02);
+            gainNode.gain.exponentialRampToValueAtTime(0.00001, now + 0.15);
+        }
+
+        oscillator.start(now);
+        oscillator.stop(now + 0.2);
+    } catch(e) {
+        console.warn("Could not play sound:", e);
+        // Disable audio context if it fails, to prevent repeated errors.
+        audioCtx = null;
+    }
+}
+
 
 function updateMessageText(messageId: string, newText: string) {
     const message = messages.find(m => m.id === messageId);
@@ -263,6 +312,11 @@ function startRinging() {
         ringOsc1.connect(ringGain);
         ringOsc2.connect(ringGain);
         ringGain.connect(ringContext.destination);
+
+        // Fix: Start the oscillators. They run continuously, and we control their
+        // volume with the gain node to produce the ringing pattern.
+        ringOsc1.start();
+        ringOsc2.start();
 
         ringGain.gain.setValueAtTime(0, ringContext.currentTime);
 
@@ -436,6 +490,7 @@ async function initializeChat() {
     const userMessage = chatInput!.value.trim();
     if (!userMessage) return;
   
+    playSound('send');
     appendMessage(userMessage, 'user');
     chatInput!.value = '';
     updateSendButtonState();
@@ -454,6 +509,7 @@ async function initializeChat() {
               accumulatedText += chunkText;
               if (!aiMessage) {
                   chatMessages!.removeChild(loadingIndicator);
+                  playSound('receive');
                   aiMessage = appendMessage('', 'ai', userMessage);
               }
               if (aiMessage) {
@@ -471,6 +527,7 @@ async function initializeChat() {
     } catch (error) {
       console.error(error);
       chatMessages!.removeChild(loadingIndicator);
+      playSound('receive');
       appendMessage("عذراً، حدث خطأ. يرجى المحاولة مرة أخرى.", 'ai');
     }
   }
@@ -530,7 +587,9 @@ async function initializeChat() {
                   scriptProcessor.connect(inputAudioContext!.destination);
               },
               onmessage: async (message: LiveServerMessage) => {
-                  const base64EncodedAudioString = message.serverContent?.modelTurn?.parts[0]?.inlineData.data;
+                  // Fix: Add optional chaining to `parts`, `[0]`, and `inlineData` to prevent errors
+                  // when a message part is not audio or the parts array is empty.
+                  const base64EncodedAudioString = message.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
                   if (base64EncodedAudioString) {
                       callIconContainer?.classList.add('is-speaking');
                       nextStartTime = Math.max(nextStartTime, outputAudioContext!.currentTime);
@@ -807,7 +866,10 @@ async function initializeChat() {
       editingMessageId = null;
       await fetchInstructionsAndCorrections(); // Re-fetch all and re-initialize chat
       renderMessages();
-      setTimeout(() => appendMessage('تم حفظ التصحيح. سيتعلم المساعد من هذا المثال في المحادثات القادمة.', 'ai'), 300);
+      setTimeout(() => {
+        playSound('receive');
+        appendMessage('تم حفظ التصحيح. سيتعلم المساعد من هذا المثال في المحادثات القادمة.', 'ai')
+      }, 300);
   }
 
   function updateAuthStateUI() {
@@ -1063,7 +1125,10 @@ async function initializeChat() {
                 hideAuthModal();
                 if (data.user?.email === ADMIN_EMAIL) {
                     const welcomeMessage = getAdminWelcomeMessage();
-                    setTimeout(() => appendMessage(welcomeMessage, 'ai'), 300);
+                    setTimeout(() => {
+                        playSound('receive');
+                        appendMessage(welcomeMessage, 'ai')
+                    }, 300);
                 }
             }
         } else {
@@ -1171,7 +1236,10 @@ async function initializeChat() {
             currentInstructionParts = newInstructionParts;
             reinitializeChat();
             hideAdminDashboard();
-            setTimeout(() => appendMessage('تم تحديث التعليمات بنجاح.', 'ai'), 300);
+            setTimeout(() => {
+                playSound('receive');
+                appendMessage('تم تحديث التعليمات بنجاح.', 'ai');
+            }, 300);
         }
 
         saveInstructionsButton!.disabled = false;
