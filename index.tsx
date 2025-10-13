@@ -529,7 +529,8 @@ async function initializeChat() {
       console.error(error);
       chatMessages!.removeChild(loadingIndicator);
       playSound('receive');
-      appendMessage("يتم تحديث التطبيق حاليا ، الرجاء العودة لاحقا", 'ai');
+      appendMessage("بتاريخ : 2025/10/13
+                    يتم تحديث التطبيق حاليا ، الرجاء العودة لاحقا", 'ai');
     }
   }
 
