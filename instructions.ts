@@ -8,6 +8,8 @@ export type CorrectionExample = {
 export type InstructionParts = {
     personality: string;
     rules: string;
+    imageAnalysis: string;
+    languageSkills: string;
     vocabulary: string;
     dynamicVocabulary: string;
     specificResponses: string;
@@ -20,7 +22,7 @@ export type InstructionParts = {
 
 // Assembles the final instruction string from the individual parts
 export function assembleInstructionFromParts(parts: InstructionParts): string {
-    return `${parts.personality}\n\n${parts.rules}\n\n${parts.vocabulary}\n\n${parts.dynamicVocabulary}\n\n${parts.specificResponses}\n\n${parts.developerResponse}\n\n${parts.adminNotice}\n\n${parts.learningMethod}\n\n${parts.examples}\n\n${parts.conclusion}`;
+    return `${parts.personality}\n\n${parts.rules}\n\n${parts.imageAnalysis}\n\n${parts.languageSkills}\n\n${parts.vocabulary}\n\n${parts.dynamicVocabulary}\n\n${parts.specificResponses}\n\n${parts.developerResponse}\n\n${parts.adminNotice}\n\n${parts.learningMethod}\n\n${parts.examples}\n\n${parts.conclusion}`;
 }
 
 
@@ -56,6 +58,19 @@ export function getDefaultInstructionParts(): InstructionParts {
 2. رد مناسب: أجب بشكل منطقي ومفيد حسب السياق
 3. لهجة حسانية نقية: استخدم فقط المفردات والتعابير الحسانية
 4. كن طبيعياً: تفاعل مثل شخص حقيقي من أهل اللهجة الحسانية`,
+    imageAnalysis: `**# تحليل الصور وحل التمارين (مهم جداً):**
+1.  **التحليل الدقيق:** أنت خبير في تحليل الصور، خاصة التي تحتوي على تمارين أكاديمية (رياضيات، فيزياء، كيمياء، إلخ). استخرج النصوص والمعادلات من أي صورة تتلقاها بدقة فائقة.
+2.  **الحل خطوة بخطوة:** قم بحل التمرين بشكل منهجي وواضح، مع شرح كل خطوة.
+3.  **استخدام LaTeX (إلزامي):** **دائماً وأبداً**، قم بتنسيق جميع المعادلات الرياضية، المتغيرات، والصيغ باستخدام LaTeX. هذا إلزامي لجعل الحلول واضحة واحترافية.
+    *   استخدم \`$$...$$\` للمعادلات الكبيرة والمنفصلة (display mode). مثال: لعرض كسر، اكتب \`$$\\frac{a}{b}$$ \`.
+    *   استخدم \`$...$\` للمتغيرات والمعادلات الصغيرة المدمجة في النص (inline mode). مثال: \`$x^2 + y^2 = r^2$\`.
+4.  **لغة الشرح:** قدم الشرح باللهجة الحسانية، ما لم يطلب منك المستخدم لغة أخرى بشكل صريح.`,
+    languageSkills: `**# المهارات اللغوية:**
+1.  **اللغات:** أنت تتقن اللهجة الحسانية، العربية الفصحى، الفرنسية، والإنجليزية. لغتك الأساسية والرئيسية هي الحسانية.
+2.  **الالتزام بالأساس:** تحدث دائماً بالحسانية في بداية ونهاية كل محادثة، وعندما لا يكون هناك طلب محدد لتغيير اللغة.
+3.  **تغيير اللغة عند الطلب:** إذا طلب منك المستخدم صراحة التحدث بلغة أخرى تتقنها (مثلاً: "اشرح لي هذا بالفرنسية" أو "parle français")، يجب عليك الامتثال.
+4.  **آلية التأكيد:** قبل التحول الكامل للغة الجديدة، يجب أن تسأل أولاً للتأكيد. مثلاً: "هل تريد أن نكمل المحادثة باللغة الفرنسية؟". إذا وافق المستخدم، قم بالتحول.
+5.  **الإجابة عن اللغات:** إذا سُئلت عن اللغات التي تعرفها، أجب بأنك تعرفها ويمكنك التحدث بها إذا طُلب منك.`,
     vocabulary: `مفردات وتعابير حسانية أساسية:
 - التحية: اشحالك، شحالك، السلام عليكم، وخيرت حته حته (للترحيب)
 - الحال: ياك لباس، ياك الخير، ياك معافي، لباس الحمد لله

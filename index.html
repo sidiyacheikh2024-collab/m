@@ -9,6 +9,27 @@
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="favicon.svg">
   <meta name="theme-color" content="#1e1e1e">
+  <script>
+    // MathJax Configuration
+    window.MathJax = {
+      tex: {
+        inlineMath: [['$', '$'], ['\\(', '\\)']],
+        displayMath: [['$$', '$$'], ['\\[', '\\]']],
+        processEscapes: true
+      },
+      svg: {
+        fontCache: 'global'
+      },
+      startup: {
+        ready: () => {
+          MathJax.startup.defaultReady();
+          // Show the body after MathJax is ready to prevent flash of unstyled content
+          document.body.style.visibility = 'visible';
+        }
+      }
+    };
+  </script>
+  <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
 <script type="importmap">
 {
   "imports": {
@@ -19,7 +40,7 @@
 }
 </script>
 </head>
-<body>
+<body style="visibility: hidden;">
   <div id="chat-container">
     <div id="chat-header">
        <button id="admin-dashboard-button" class="hidden" aria-label="لوحة تحكم المدير">
@@ -49,7 +70,13 @@
     </div>
     <div id="chat-messages"></div>
     <form id="chat-form">
-      <input type="text" id="chat-input" placeholder="اسألني أي شي..." autocomplete="off" required>
+      <button type="button" id="camera-button" aria-label="التقاط صورة">
+        <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="currentColor"><path d="M0 0h24v24H0V0z" fill="none"/><circle cx="12" cy="12" r="3.2"/><path d="M9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z"/></svg>
+      </button>
+      <div id="input-wrapper">
+        <div id="image-preview-container"></div>
+        <input type="text" id="chat-input" placeholder="اسألني أي شي..." autocomplete="off">
+      </div>
       <button type="button" id="send-button" aria-label="بدء مكالمة">
         <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="currentColor"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M20.01 15.38c-1.23 0-2.42-.2-3.53-.56-.35-.12-.74-.03-1.01.24l-1.57 1.97c-2.83-1.35-5.21-3.73-6.56-6.56l1.97-1.57c.27-.27.35-.66.24-1.01-.37-1.11-.56-2.3-.56-3.53 0-.54-.45-.99-.99-.99H4.19C3.65 3 3 3.24 3 3.99 3 13.28 10.72 21 20.01 21c.75 0 .99-.65.99-1.19v-2.43c0-.54-.45-.99-.99-.99z"/></svg>
       </button>
@@ -118,6 +145,14 @@
             <label for="inst-rules">قواعد مهمة</label>
             <textarea id="inst-rules" data-part="rules" dir="ltr" rows="5"></textarea>
           </div>
+          <div class="instruction-part">
+            <label for="inst-imageAnalysis">تحليل الصور والتمارين</label>
+            <textarea id="inst-imageAnalysis" data-part="imageAnalysis" dir="ltr" rows="5"></textarea>
+          </div>
+          <div class="instruction-part">
+            <label for="inst-languageSkills">المهارات اللغوية</label>
+            <textarea id="inst-languageSkills" data-part="languageSkills" dir="ltr" rows="5"></textarea>
+          </div>
            <div class="instruction-part">
             <label for="inst-vocabulary">مفردات وتعابير أساسية</label>
             <textarea id="inst-vocabulary" data-part="vocabulary" dir="ltr" rows="10"></textarea>
@@ -160,6 +195,35 @@
     </div>
   </div>
 
+  <div id="camera-modal" class="hidden">
+      <video id="camera-view" autoplay playsinline></video>
+      <canvas id="camera-canvas" class="hidden"></canvas>
+      <div class="camera-controls">
+          <button id="camera-flash-button" aria-label="تشغيل الفلاش">
+              <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="currentColor"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M7 2v11h3v9l7-12h-4l3-8z"/></svg>
+          </button>
+          <button id="camera-capture-button" aria-label="التقاط"></button>
+          <button id="camera-close-button" aria-label="إغلاق">&times;</button>
+      </div>
+  </div>
+
+  <div id="cropper-modal" class="hidden">
+      <div id="cropper-container">
+        <img id="cropper-image" alt="Captured image for cropping"/>
+        <div id="cropper-box-container">
+            <div id="cropper-box">
+                <div class="cropper-handle" id="handle-nw"></div>
+                <div class="cropper-handle" id="handle-ne"></div>
+                <div class="cropper-handle" id="handle-sw"></div>
+                <div class="cropper-handle" id="handle-se"></div>
+            </div>
+        </div>
+      </div>
+      <div class="cropper-controls">
+          <button id="cropper-cancel-button">إلغاء</button>
+          <button id="cropper-confirm-button">حفظ</button>
+      </div>
+  </div>
 
   <script type="module" src="/index.tsx"></script>
 </body>

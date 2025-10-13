@@ -2,6 +2,7 @@
   "name": "Copy of Copy of AI Chat",
   "description": "A dark-themed AI chat application using the Gemini API.",
   "requestFramePermissions": [
-    "microphone"
+    "microphone",
+    "camera"
   ]
 }

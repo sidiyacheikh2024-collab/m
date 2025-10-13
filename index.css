@@ -317,29 +317,80 @@ html, body {
 
 #chat-form {
   display: flex;
-  flex-direction: row-reverse;
+  flex-direction: row; /* Changed to row for visual order */
+  align-items: flex-end; /* Align items to the bottom */
   gap: 10px;
   padding: 10px 20px;
   border-top: 1px solid var(--border-color);
   background-color: var(--background-color);
 }
 
-#chat-input {
+#input-wrapper {
   flex: 1;
-  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--surface-color);
   border: 1px solid var(--border-color);
   border-radius: 20px;
-  background-color: var(--surface-color);
-  color: var(--text-color);
-  font-size: 1rem;
-  outline: none;
+  overflow: hidden;
+  transition: border-color 0.2s;
 }
 
-#chat-input:focus {
+#input-wrapper:focus-within {
   border-color: var(--primary-color);
 }
 
-#send-button {
+#image-preview-container {
+    padding: 0;
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease, padding 0.3s ease;
+    position: relative;
+}
+
+#image-preview-container.visible {
+    max-height: 100px; /* Adjust as needed */
+    padding: 8px 8px 0 8px;
+}
+
+#image-preview-container img {
+    width: auto;
+    height: 60px;
+    border-radius: 8px;
+    object-fit: cover;
+}
+
+#remove-image-button {
+    position: absolute;
+    top: 0px;
+    right: 0px; /* RTL */
+    background-color: rgba(0, 0, 0, 0.7);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+    font-size: 14px;
+    line-height: 20px;
+    text-align: center;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+#chat-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px;
+  border: none;
+  background-color: transparent;
+  color: var(--text-color);
+  font-size: 1rem;
+  outline: none;
+  resize: none; /* In case it renders as a textarea */
+}
+
+
+#send-button, #camera-button {
   background-color: var(--primary-color);
   border: none;
   border-radius: 50%;
@@ -353,11 +404,11 @@ html, body {
   flex-shrink: 0;
 }
 
-#send-button:hover {
+#send-button:hover, #camera-button:hover {
   background-color: var(--primary-variant-color);
 }
 
-#send-button svg {
+#send-button svg, #camera-button svg {
   fill: white;
 }
 
@@ -1010,4 +1061,138 @@ html, body {
     font-size: 0.8rem;
     margin-top: 20px;
     direction: ltr;
+}
+
+/* --- Camera and Cropper Styles --- */
+#camera-modal, #cropper-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: #000;
+    z-index: 1100;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    border-radius: 0; /* Fix: Explicitly remove border-radius */
+}
+
+#camera-view {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 0; /* Fix: Explicitly remove border-radius */
+}
+
+.camera-controls, .cropper-controls {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    padding: 20px;
+    box-sizing: border-box;
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+}
+
+.camera-controls button, .cropper-controls button {
+    background: none;
+    border: none;
+    color: white;
+    cursor: pointer;
+}
+
+#camera-close-button {
+    position: absolute;
+    top: 20px;
+    left: 20px; /* RTL */
+    font-size: 2rem;
+    font-weight: bold;
+    background-color: rgba(0,0,0,0.4);
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    line-height: 40px;
+    padding: 0;
+}
+
+#camera-flash-button.active svg {
+    fill: var(--primary-color);
+}
+
+#camera-capture-button {
+    width: 70px;
+    height: 70px;
+    border-radius: 50%;
+    background-color: white;
+    /* Fix: Simplified border to avoid confusion. It now pulses on press. */
+    border: 4px solid rgba(255, 255, 255, 0.7);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    transition: transform 0.1s ease-out, box-shadow 0.1s ease-out;
+}
+
+#camera-capture-button:active {
+    transform: scale(0.95);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+}
+
+#cropper-container {
+    width: 100%;
+    height: calc(100% - 84px); /* Full height minus controls */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow: hidden;
+    position: relative;
+}
+
+#cropper-image {
+    max-width: 100%;
+    max-height: 100%;
+    user-select: none;
+}
+
+#cropper-box-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    cursor: crosshair;
+}
+
+#cropper-box {
+    position: absolute;
+    border: 2px solid var(--primary-color);
+    box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.7);
+    cursor: move;
+    display: none; /* Shown by JS */
+}
+
+.cropper-handle {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    background-color: var(--primary-color);
+    border: 1px solid black;
+}
+#handle-nw { top: -6px; left: -6px; cursor: nwse-resize; }
+#handle-ne { top: -6px; right: -6px; cursor: nesw-resize; }
+#handle-sw { bottom: -6px; left: -6px; cursor: nesw-resize; }
+#handle-se { bottom: -6px; right: -6px; cursor: nwse-resize; }
+
+.cropper-controls button {
+    background-color: var(--surface-color);
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 500;
+}
+#cropper-confirm-button {
+    background-color: var(--primary-color);
+    color: black;
 }

@@ -1,5 +1,5 @@
 // Fix: Removed non-existent 'LiveSession' type from import.
-import { GoogleGenAI, Chat, LiveServerMessage, Modality, Blob } from "@google/genai";
+import { GoogleGenAI, Chat, LiveServerMessage, Modality, Blob, Part } from "@google/genai";
 import { createClient, SupabaseClient, User } from '@supabase/supabase-js';
 import { constructInstructionWithExamples, InstructionParts, getDefaultInstructionParts, assembleInstructionFromParts } from './instructions';
 
@@ -7,6 +7,9 @@ import { constructInstructionWithExamples, InstructionParts, getDefaultInstructi
 const supabaseUrl = 'https://rlfiypthhkamdedaiebv.supabase.co';
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJsZml5cHRoaGthbWRlZGFpZWJ2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkyMjIzMTcsImV4cCI6MjA3NDc5ODMxN30.hUOd66JatytNH5OWrwYjffNmMFkvopzQ1nqSokn16-c';
 const supabase: SupabaseClient = createClient(supabaseUrl, supabaseKey);
+
+// --- MathJax Declaration ---
+declare const MathJax: any;
 
 
 // --- DOM Element Selection ---
@@ -57,6 +60,22 @@ const correctionsList = document.getElementById('corrections-list') as HTMLDivEl
 const trainForm = document.getElementById('train-form') as HTMLFormElement | null;
 const saveInstructionsButton = document.getElementById('save-instructions-button') as HTMLButtonElement | null;
 
+// --- Image Capture Elements ---
+const cameraButton = document.getElementById('camera-button') as HTMLButtonElement | null;
+const imagePreviewContainer = document.getElementById('image-preview-container') as HTMLDivElement | null;
+const cameraModal = document.getElementById('camera-modal') as HTMLDivElement | null;
+const cameraView = document.getElementById('camera-view') as HTMLVideoElement | null;
+const cameraCanvas = document.getElementById('camera-canvas') as HTMLCanvasElement | null;
+const cameraFlashButton = document.getElementById('camera-flash-button') as HTMLButtonElement | null;
+const cameraCaptureButton = document.getElementById('camera-capture-button') as HTMLButtonElement | null;
+const cameraCloseButton = document.getElementById('camera-close-button') as HTMLButtonElement | null;
+const cropperModal = document.getElementById('cropper-modal') as HTMLDivElement | null;
+const cropperImage = document.getElementById('cropper-image') as HTMLImageElement | null;
+const cropperBoxContainer = document.getElementById('cropper-box-container') as HTMLDivElement | null;
+const cropperBox = document.getElementById('cropper-box') as HTMLDivElement | null;
+const cropperCancelButton = document.getElementById('cropper-cancel-button') as HTMLButtonElement | null;
+const cropperConfirmButton = document.getElementById('cropper-confirm-button') as HTMLButtonElement | null;
+
 
 // --- SVG Icons ---
 const sendIconSVG = `<svg class="send-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path></svg>`;
@@ -68,10 +87,12 @@ interface Message {
     text: string;
     sender: 'user' | 'ai';
     userPrompt?: string; // The user message that triggered this AI response
+    image?: string | null; // base64 data URL for images
 }
 let messages: Message[] = [];
 let editingMessageId: string | null = null;
 let editingCorrectionId: number | null = null;
+let croppedImage: string | null = null; // base64 data URL
 
 let isLoginMode = true;
 let currentUser: User | null = null;
@@ -103,6 +124,10 @@ let ringOsc1: OscillatorNode | null = null;
 let ringOsc2: OscillatorNode | null = null;
 let ringGain: GainNode | null = null;
 let ringIntervalId: number | null = null;
+
+// --- Camera State ---
+let cameraStream: MediaStream | null = null;
+let isFlashSupported = false;
 
 // --- Audio Feedback State ---
 let audioCtx: AudioContext | null = null;
@@ -155,15 +180,27 @@ function playSound(type: 'send' | 'receive') {
     }
 }
 
+function renderMessageContent(text: string): string {
+    // Escape basic HTML characters to prevent XSS, so we can use .innerHTML.
+    // MathJax will process the text content of the element later to find and render LaTeX.
+    return text
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+}
+
 
 function updateMessageText(messageId: string, newText: string) {
     const message = messages.find(m => m.id === messageId);
     if (message) {
         message.text = newText;
-        // More efficient than full re-render for streaming
-        const messageDiv = document.querySelector(`[data-message-id="${messageId}"] .message`);
+        const messageDiv = document.querySelector(`[data-message-id="${messageId}"] .message p`);
         if (messageDiv) {
-            messageDiv.textContent = newText;
+            messageDiv.innerHTML = renderMessageContent(newText);
+            // Typeset the updated element to render math as it streams in.
+            if (typeof MathJax !== 'undefined' && MathJax.typesetPromise) {
+                MathJax.typesetPromise([messageDiv]).catch((err: any) => console.error('MathJax stream error:', err));
+            }
             scrollToBottom();
         }
     }
@@ -190,9 +227,11 @@ function scrollToBottom() {
 }
 
 function updateSendButtonState() {
-    if (!chatInput || !sendButton) return;
+    if (!chatInput || !sendButton || !cameraButton) return;
     const hasText = chatInput.value.trim() !== '';
-    if (hasText) {
+    const hasImage = !!croppedImage;
+
+    if (hasText || hasImage) {
         sendButton.innerHTML = sendIconSVG;
         sendButton.setAttribute('aria-label', 'إرسال الرسالة');
         sendButton.type = 'submit';
@@ -200,6 +239,14 @@ function updateSendButtonState() {
         sendButton.innerHTML = callIconSVG;
         sendButton.setAttribute('aria-label', 'بدء مكالمة');
         sendButton.type = 'button';
+    }
+
+    if(hasImage) {
+        cameraButton.classList.add('hidden');
+        imagePreviewContainer?.classList.add('visible');
+    } else {
+        cameraButton.classList.remove('hidden');
+        imagePreviewContainer?.classList.remove('visible');
     }
 }
 
@@ -489,50 +536,69 @@ async function initializeChat() {
   async function handleSendMessage(event: Event) {
     event.preventDefault();
     const userMessage = chatInput!.value.trim();
-    if (!userMessage) return;
-  
+    if (!userMessage && !croppedImage) return;
+
     playSound('send');
-    appendMessage(userMessage, 'user');
+    appendMessage(userMessage, 'user', undefined, croppedImage);
+    const imageToSend = croppedImage;
     chatInput!.value = '';
-    updateSendButtonState();
-    
+    removeImagePreview();
+
     const loadingIndicator = createLoadingIndicator();
     if (!loadingIndicator) return;
-  
-    try {
-      const responseStream = await chat.sendMessageStream({ message: userMessage });
-      let aiMessage: Message | null = null;
-      let accumulatedText = '';
-  
-      for await (const chunk of responseStream) {
-          const chunkText = chunk.text;
-          if (chunkText) {
-              accumulatedText += chunkText;
-              if (!aiMessage) {
-                  chatMessages!.removeChild(loadingIndicator);
-                  playSound('receive');
-                  aiMessage = appendMessage('', 'ai', userMessage);
-              }
-              if (aiMessage) {
-                updateMessageText(aiMessage.id, accumulatedText);
-              }
-          }
-      }
-      if (!aiMessage) { // Handle case where stream is empty
-          chatMessages!.removeChild(loadingIndicator);
-      } else {
-          // Final re-render to add edit button
-          renderMessages();
-      }
 
+    try {
+        let finalMessagePayload: string | Part[];
+
+        if (imageToSend) {
+            const parts: Part[] = [];
+            if (userMessage) {
+                parts.push({ text: userMessage });
+            }
+            parts.push({
+                inlineData: {
+                    mimeType: 'image/jpeg',
+                    data: imageToSend.substring(imageToSend.indexOf(',') + 1),
+                },
+            });
+            finalMessagePayload = parts;
+        } else {
+            finalMessagePayload = userMessage;
+        }
+
+        const responseStream = await chat.sendMessageStream({ message: finalMessagePayload });
+        let aiMessage: Message | null = null;
+        let accumulatedText = '';
+
+        for await (const chunk of responseStream) {
+            const chunkText = chunk.text;
+            if (chunkText) {
+                accumulatedText += chunkText;
+                if (!aiMessage) {
+                    // First chunk received, remove loading indicator and create the message bubble with content.
+                    chatMessages!.removeChild(loadingIndicator);
+                    playSound('receive');
+                    aiMessage = appendMessage(accumulatedText, 'ai', userMessage);
+                } else {
+                    // Subsequent chunks just update the existing message bubble.
+                    updateMessageText(aiMessage.id, accumulatedText);
+                }
+            }
+        }
+        if (!aiMessage && loadingIndicator) { // Handle case where stream is empty or returns no text
+            chatMessages!.removeChild(loadingIndicator);
+        } else if(aiMessage) {
+            // Final re-render to ensure edit/report buttons are correctly attached.
+            renderMessages();
+        }
     } catch (error) {
-      console.error(error);
-      chatMessages!.removeChild(loadingIndicator);
-      playSound('receive');
-      appendMessage("بتاريخ : 2025/10/13
-                    يتم تحديث التطبيق حاليا ، الرجاء العودة لاحقا", 'ai');
+        console.error(error);
+        if(loadingIndicator.parentNode) chatMessages!.removeChild(loadingIndicator);
+        playSound('receive');
+        appendMessage("عذراً، حدث خطأ. يرجى المحاولة مرة أخرى.", 'ai');
     }
-  }
+}
+
 
   async function startCall() {
       callTranscriptHistory = [];
@@ -687,12 +753,13 @@ async function initializeChat() {
     callScreen!.style.display = 'none';
   }
 
-  function appendMessage(text: string, sender: 'user' | 'ai', userPromptForAiMessage?: string): Message {
+  function appendMessage(text: string, sender: 'user' | 'ai', userPromptForAiMessage?: string, image: string | null = null): Message {
       const message: Message = {
           id: `msg-${Date.now()}-${Math.random()}`,
           text,
           sender,
           userPrompt: userPromptForAiMessage,
+          image,
       };
       messages.push(message);
       renderMessages();
@@ -736,7 +803,27 @@ async function initializeChat() {
             // Render normal view
             const content = document.createElement('div');
             content.className = `message ${msg.sender}-message`;
-            content.textContent = msg.text;
+            
+            // Render image if it exists
+            if (msg.image) {
+                const imgElement = document.createElement('img');
+                imgElement.src = msg.image;
+                imgElement.alt = "صورة مرفقة";
+                imgElement.style.maxWidth = '100%';
+                imgElement.style.maxHeight = '250px';
+                imgElement.style.borderRadius = '12px';
+                imgElement.style.marginBottom = msg.text ? '8px' : '0';
+                content.appendChild(imgElement);
+            }
+
+            // Render text if it exists
+            if (msg.text) {
+                const textNode = document.createElement('p');
+                textNode.innerHTML = renderMessageContent(msg.text);
+                textNode.style.margin = '0';
+                content.appendChild(textNode);
+            }
+
             wrapper.appendChild(content);
 
             // Show actions (edit/report) for AI messages if a user is logged in
@@ -769,6 +856,12 @@ async function initializeChat() {
         }
         chatMessages.appendChild(wrapper);
     });
+    
+    // After adding all messages, tell MathJax to typeset the math expressions.
+    if (typeof MathJax !== 'undefined' && MathJax.typesetPromise) {
+        MathJax.typesetPromise([chatMessages]).catch((err: any) => console.error('MathJax render error:', err));
+    }
+    
     scrollToBottom();
   }
 
@@ -1179,6 +1272,360 @@ async function logPageView() {
     }
 }
 
+// --- Image Capture and Cropper Logic ---
+function showImagePreview(imageDataUrl: string) {
+    if (!imagePreviewContainer) return;
+    croppedImage = imageDataUrl;
+    imagePreviewContainer.innerHTML = `
+        <img src="${imageDataUrl}" alt="Image preview"/>
+        <button id="remove-image-button" aria-label="Remove image">&times;</button>
+    `;
+    document.getElementById('remove-image-button')?.addEventListener('click', removeImagePreview);
+    updateSendButtonState();
+}
+
+function removeImagePreview() {
+    if (imagePreviewContainer) imagePreviewContainer.innerHTML = '';
+    croppedImage = null;
+    updateSendButtonState();
+}
+
+async function openCamera() {
+    if (!cameraModal || !cameraView) return;
+
+    const highQualityConstraints: MediaStreamConstraints = {
+        video: { 
+            facingMode: 'environment',
+            width: { ideal: 1920 },
+            height: { ideal: 1080 }
+        }
+    };
+    const standardConstraints: MediaStreamConstraints = {
+        video: { facingMode: 'environment' }
+    };
+
+    const tryStream = async (constraints: MediaStreamConstraints): Promise<MediaStream> => {
+        try {
+            return await navigator.mediaDevices.getUserMedia(constraints);
+        } catch (err) {
+            console.warn(`Failed to get media with constraints: ${JSON.stringify(constraints)}`, err);
+            throw err;
+        }
+    };
+
+    try {
+        // Try for high quality first
+        try {
+            cameraStream = await tryStream(highQualityConstraints);
+        } catch (e) {
+            console.log("High-quality constraints failed, falling back to standard constraints.");
+            // Fallback to standard quality if high quality fails
+            cameraStream = await tryStream(standardConstraints);
+        }
+
+        cameraView.srcObject = cameraStream;
+        cameraModal.classList.remove('hidden');
+
+        cameraView.onloadedmetadata = () => {
+            // Check for flash (torch) support ONCE when the camera opens.
+            const track = cameraStream?.getVideoTracks()?.[0];
+            if (track) {
+                try {
+                    const capabilities = track.getCapabilities();
+                    // The 'torch' key exists in capabilities if the feature is supported by the device.
+                    // Fix: Cast to 'any' to access the 'torch' property, which is not in the default TS lib definitions.
+                    isFlashSupported = !!(capabilities as any).torch;
+                } catch (e) {
+                    console.warn("Could not read camera capabilities, assuming no flash support:", e);
+                    isFlashSupported = false;
+                }
+            } else {
+                isFlashSupported = false;
+            }
+            
+            // Per user request, the button is always visible. We just reset its active state.
+            cameraFlashButton?.classList.remove('hidden');
+            cameraFlashButton?.classList.remove('active');
+        };
+
+    } catch (err) {
+        console.error("Error accessing camera:", err);
+        let message = "لا يمكن الوصول إلى الكاميرا. يرجى التحقق من الأذونات.";
+        if (err instanceof DOMException) {
+            if (err.name === "NotAllowedError") {
+                message = "لقد رفضت الإذن بالوصول إلى الكاميرا. يرجى تفعيله من إعدادات المتصفح.";
+            } else if (err.name === "NotFoundError") {
+                message = "لم يتم العثور على كاميرا خلفية على جهازك.";
+            } else if (err.name === "NotReadableError") {
+                message = "الكاميرا قيد الاستخدام بالفعل من قبل تطبيق آخر.";
+            }
+        }
+        alert(message);
+    }
+}
+
+function closeCamera() {
+    if (cameraStream) {
+        cameraStream.getTracks().forEach(track => track.stop());
+        cameraStream = null;
+    }
+    if (cameraView) {
+        cameraView.srcObject = null;
+        cameraView.onloadedmetadata = null; // Clean up the event handler
+    }
+    cameraModal?.classList.add('hidden');
+}
+
+
+function captureImage() {
+    if (!cameraView || !cameraCanvas || !cameraStream) return;
+    const track = cameraStream.getVideoTracks()[0];
+    const settings = track.getSettings();
+    cameraCanvas.width = settings.width || cameraView.videoWidth;
+    cameraCanvas.height = settings.height || cameraView.videoHeight;
+    const context = cameraCanvas.getContext('2d');
+    if (context) {
+        context.drawImage(cameraView, 0, 0, cameraCanvas.width, cameraCanvas.height);
+        const dataUrl = cameraCanvas.toDataURL('image/jpeg');
+        closeCamera();
+        openCropper(dataUrl);
+    }
+}
+
+async function toggleFlash() {
+    if (!cameraStream || !cameraFlashButton) return;
+
+    // FIX: To prevent "Unsupported constraint" errors, first check the capability
+    // which was determined when the camera was opened.
+    if (!isFlashSupported) {
+        alert("جهازك لا يدعم تشغيل الفلاش.");
+        return; // Exit early to prevent the error.
+    }
+
+    const track = cameraStream.getVideoTracks()[0];
+    if (!track) return;
+
+    try {
+        // Determine the desired new state *before* applying it.
+        const newStateIsOn = !cameraFlashButton.classList.contains('active');
+        // Fix: Cast constraint set to 'any' to use the 'torch' property, which is not in the default TS lib definitions.
+        await track.applyConstraints({
+            advanced: [{ torch: newStateIsOn } as any]
+        });
+        // Only update the button's appearance if the call was successful.
+        cameraFlashButton.classList.toggle('active', newStateIsOn);
+    } catch (err) {
+        console.error("Error toggling flash:", err);
+        // If it fails even after a capability check (e.g., OS-level issue),
+        // ensure the button is visually off and notify the user.
+        cameraFlashButton.classList.remove('active'); 
+        alert("حدث خطأ أثناء محاولة تشغيل الفلاش.");
+    }
+}
+
+
+/**
+ * WYSIWYG image cropper. Fixes coordinate mismatch bugs by aligning the visual
+ * selection box with the logical crop area, ensuring the final output is exactly
+ * what the user selected.
+ * @param imageDataUrl The base64 data URL of the image to crop.
+ */
+function openCropper(imageDataUrl: string) {
+    if (!cropperModal || !cropperImage || !cropperBox || !cropperBoxContainer || !cropperCancelButton || !cropperConfirmButton) return;
+
+    let startX: number, startY: number, isDrawing = false, isResizing = false, isMoving = false;
+    let resizeHandle: string | null = null;
+    // `rect` stores coordinates relative to the IMAGE, not the container.
+    let rect = { x: 0, y: 0, w: 0, h: 0 };
+
+    // --- Core Cropper Functions ---
+
+    /** Calculates pointer coordinates relative to the top-left of the image element. */
+    const getPointerPosition = (e: MouseEvent | TouchEvent) => {
+        const imageRect = cropperImage!.getBoundingClientRect();
+        const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+        const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+        return {
+            x: clientX - imageRect.left,
+            y: clientY - imageRect.top
+        };
+    };
+
+    /**
+     * BUG FIX: Draws the visual crop box. It calculates the offset of the
+     * image within its container and applies it to the box's position. This
+     * ensures the visual box perfectly aligns with the logical `rect` state.
+     */
+    const drawBox = () => {
+        const imageRect = cropperImage!.getBoundingClientRect();
+        const containerRect = cropperBoxContainer!.getBoundingClientRect();
+        
+        // This offset is the letterboxing/pillarboxing around the image.
+        const offsetX = imageRect.left - containerRect.left;
+        const offsetY = imageRect.top - containerRect.top;
+
+        cropperBox!.style.left = `${rect.x + offsetX}px`;
+        cropperBox!.style.top = `${rect.y + offsetY}px`;
+        cropperBox!.style.width = `${rect.w}px`;
+        cropperBox!.style.height = `${rect.h}px`;
+    };
+    
+    // --- Event Handlers ---
+
+    const onPointerDown = (e: MouseEvent | TouchEvent) => {
+        const target = e.target as HTMLElement;
+        if (target.closest('.cropper-controls')) return;
+        
+        e.preventDefault();
+        const pos = getPointerPosition(e);
+        startX = pos.x;
+        startY = pos.y;
+
+        if (target.classList.contains('cropper-handle')) {
+            isResizing = true;
+            resizeHandle = target.id;
+        } else if (target === cropperBox) {
+            isMoving = true;
+        } else {
+            isDrawing = true;
+            rect = { x: startX, y: startY, w: 0, h: 0 };
+            drawBox();
+        }
+    };
+
+    const onPointerMove = (e: MouseEvent | TouchEvent) => {
+        if (!isDrawing && !isResizing && !isMoving) return;
+        e.preventDefault();
+        
+        const pos = getPointerPosition(e);
+        const deltaX = pos.x - startX;
+        const deltaY = pos.y - startY;
+        const imageRect = cropperImage!.getBoundingClientRect();
+
+        if (isDrawing) {
+            rect.w = deltaX;
+            rect.h = deltaY;
+            if (rect.w < 0) { rect.x = pos.x; rect.w = -rect.w; }
+            if (rect.h < 0) { rect.y = pos.y; rect.h = -rect.h; }
+        } else if (isMoving) {
+            rect.x += deltaX;
+            rect.y += deltaY;
+            startX = pos.x;
+            startY = pos.y;
+        } else if (isResizing) {
+            const oldRect = { ...rect };
+            if (resizeHandle?.includes('e')) rect.w += deltaX;
+            if (resizeHandle?.includes('w')) { rect.x += deltaX; rect.w -= deltaX; }
+            if (resizeHandle?.includes('s')) rect.h += deltaY;
+            if (resizeHandle?.includes('n')) { rect.y += deltaY; rect.h -= deltaY; }
+            
+            if (rect.w < 20) rect = {...rect, x: oldRect.x, w: oldRect.w};
+            if (rect.h < 20) rect = {...rect, y: oldRect.y, h: oldRect.h};
+            
+            startX = pos.x;
+            startY = pos.y;
+        }
+        
+        // Constrain logical rect to image boundaries
+        rect.x = Math.max(0, rect.x);
+        rect.y = Math.max(0, rect.y);
+        if (rect.x + rect.w > imageRect.width) rect.w = imageRect.width - rect.x;
+        if (rect.y + rect.h > imageRect.height) rect.h = imageRect.height - rect.y;
+
+        drawBox();
+    };
+
+    const onPointerUp = () => {
+        isDrawing = isResizing = isMoving = false;
+        resizeHandle = null;
+    };
+    
+    // --- Cleanup and Confirmation Logic ---
+
+    const cleanup = () => {
+        cropperBoxContainer?.removeEventListener('mousedown', onPointerDown);
+        cropperBoxContainer?.removeEventListener('mousemove', onPointerMove);
+        window.removeEventListener('mouseup', onPointerUp);
+        cropperBoxContainer?.removeEventListener('touchstart', onPointerDown);
+        cropperBoxContainer?.removeEventListener('touchmove', onPointerMove);
+        window.removeEventListener('touchend', onPointerUp);
+        cropperImage.onload = null;
+        cropperCancelButton.onclick = null;
+        cropperConfirmButton.onclick = null;
+    };
+
+    const onCancel = () => {
+        cleanup();
+        cropperModal?.classList.add('hidden');
+    };
+
+    const onConfirm = () => {
+        cleanup();
+        const imageRect = cropperImage!.getBoundingClientRect();
+        
+        if (rect.w < 1 || rect.h < 1) {
+             cropperModal?.classList.add('hidden');
+             return;
+        }
+        
+        const scaleX = cropperImage!.naturalWidth / imageRect.width;
+        const scaleY = cropperImage!.naturalHeight / imageRect.height;
+        
+        const cropCanvas = document.createElement('canvas');
+        cropCanvas.width = rect.w * scaleX;
+        cropCanvas.height = rect.h * scaleY;
+        const ctx = cropCanvas.getContext('2d');
+        
+        ctx?.drawImage(
+            cropperImage!,
+            rect.x * scaleX, rect.y * scaleY, // source x, y
+            rect.w * scaleX, rect.h * scaleY, // source width, height
+            0, 0,                             // destination x, y
+            cropCanvas.width, cropCanvas.height // destination width, height
+        );
+        
+        showImagePreview(cropCanvas.toDataURL('image/jpeg'));
+        cropperModal?.classList.add('hidden');
+    };
+
+    // --- Setup and Initialization ---
+    
+    const setupCropper = () => {
+        const imageRect = cropperImage!.getBoundingClientRect();
+        
+        const shorterSide = Math.min(imageRect.width, imageRect.height);
+        const boxSize = shorterSide > 0 ? shorterSide * 0.8 : 200;
+        rect = {
+            w: boxSize,
+            h: boxSize,
+            x: (imageRect.width - boxSize) / 2,
+            y: (imageRect.height - boxSize) / 2
+        };
+
+        drawBox();
+        cropperBox!.style.display = 'block';
+        
+        cropperBoxContainer?.addEventListener('mousedown', onPointerDown);
+        cropperBoxContainer?.addEventListener('mousemove', onPointerMove);
+        window.addEventListener('mouseup', onPointerUp);
+        cropperBoxContainer?.addEventListener('touchstart', onPointerDown, { passive: false });
+        cropperBoxContainer?.addEventListener('touchmove', onPointerMove, { passive: false });
+        window.addEventListener('touchend', onPointerUp);
+        cropperCancelButton.onclick = onCancel;
+        cropperConfirmButton.onclick = onConfirm;
+    };
+    
+    // --- Entry Point ---
+    cropperImage.src = imageDataUrl;
+    cropperModal.classList.remove('hidden');
+
+    if (cropperImage.complete) {
+        setupCropper();
+    } else {
+        cropperImage.onload = setupCropper;
+    }
+}
+
 
   try {
     const { data: { session } } = await supabase.auth.getSession();
@@ -1190,7 +1637,7 @@ async function logPageView() {
         updateAuthStateUI();
     });
 
-    ai = new GoogleGenAI({ apiKey: 'AIzaSyAKGB7rK2n6BSXz14C3v_Vj7V8saogNM64' });
+    ai = new GoogleGenAI({ apiKey: 'AIzaSyD1ZpA6GXYyY53Lz8bqj2k0LIdB9FMyqlg' });
     
     await logPageView();
     await fetchInstructionsAndCorrections();
@@ -1198,18 +1645,22 @@ async function logPageView() {
     // --- Event Listeners ---
     chatForm!.addEventListener('submit', handleSendMessage);
     chatInput!.addEventListener('input', updateSendButtonState);
-    sendButton!.addEventListener('click', () => {
-        if (chatInput!.value.trim() === '') startCall();
+    sendButton!.addEventListener('click', (e) => {
+        if (sendButton?.type !== 'submit') {
+             if (chatInput!.value.trim() === '' && !croppedImage) startCall();
+        }
     });
     endCallButton!.addEventListener('click', endCall);
     signupButton!.addEventListener('click', showAuthModal);
-    // Fix: The event listener passes an event object to `handleLogout`, which expects 0 arguments.
-    // Wrapping it in an arrow function ensures it's called correctly and fixes the error.
     logoutButton!.addEventListener('click', () => handleLogout());
     authModalCloseButton!.addEventListener('click', hideAuthModal);
     authModalBackdrop!.addEventListener('click', hideAuthModal);
     switchToSignupLink!.addEventListener('click', (e) => { e.preventDefault(); isLoginMode = false; updateAuthModalView(); });
     switchToLoginLink!.addEventListener('click', (e) => { e.preventDefault(); isLoginMode = true; updateAuthModalView(); });
+    cameraButton?.addEventListener('click', openCamera);
+    cameraCloseButton?.addEventListener('click', closeCamera);
+    cameraCaptureButton?.addEventListener('click', captureImage);
+    cameraFlashButton?.addEventListener('click', toggleFlash);
 
     chatMessages!.addEventListener('click', e => {
         const target = e.target as HTMLElement;
@@ -1302,7 +1753,6 @@ async function logPageView() {
         const id = parseInt(card.dataset.id!, 10);
 
         if (target.matches('.delete-correction-btn')) {
-            // Fix: Added 'await' to ensure the async delete operation completes before proceeding.
             await handleDeleteCorrection(id);
         } else if (target.matches('.edit-correction-btn')) {
             editingCorrectionId = id;
