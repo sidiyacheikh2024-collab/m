@@ -529,7 +529,7 @@ async function initializeChat() {
       console.error(error);
       chatMessages!.removeChild(loadingIndicator);
       playSound('receive');
-      appendMessage("عذراً، حدث خطأ. يرجى المحاولة مرة أخرى.", 'ai');
+      appendMessage("يتم تحديث التطبيق حاليا ، الرجاء العودة لاحقا", 'ai');
     }
   }
 
