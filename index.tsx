@@ -1,4 +1,4 @@
-٣// Fix: Removed non-existent 'LiveSession' type from import.
+// Fix: Removed non-existent 'LiveSession' type from import.
 import { GoogleGenAI, Chat, LiveServerMessage, Modality, Blob, Part } from "@google/genai";
 import { createClient, SupabaseClient, User } from '@supabase/supabase-js';
 import { constructInstructionWithExamples, InstructionParts, getDefaultInstructionParts, assembleInstructionFromParts } from './instructions';
@@ -595,8 +595,7 @@ async function initializeChat() {
         console.error(error);
         if(loadingIndicator.parentNode) chatMessages!.removeChild(loadingIndicator);
         playSound('receive');
-        appendMessage("جاري  تحديث المتطبيق ...
-                      الرجاء المحاولة لاحقا.", 'ai');
+        appendMessage("عذراً، حدث خطأ. يرجى المحاولة مرة أخرى.", 'ai');
     }
 }
 
@@ -1638,7 +1637,7 @@ function openCropper(imageDataUrl: string) {
         updateAuthStateUI();
     });
 
-    ai = new GoogleGenAI({ apiKey: 'AIzaSyB3bMt7EV1AK4NKzkChf1gRUkSfV0gaEzA' });
+    ai = new GoogleGenAI({ apiKey: 'AIzaSyD1ZpA6GXYyY53Lz8bqj2k0LIdB9FMyqlg' });
     
     await logPageView();
     await fetchInstructionsAndCorrections();
