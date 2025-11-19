@@ -1637,7 +1637,7 @@ function openCropper(imageDataUrl: string) {
         updateAuthStateUI();
     });
 
-    ai = new GoogleGenAI({ apiKey: 'AIzaSyB3bMt7EV1AK4NKzkChf1gRUkSfV0gaEzA' });
+    ai = new GoogleGenAI({ apiKey: 'AIzaSyAyH0unwI5YaE6c7qa74p0H4ajMfqAbIZE' });
     
     await logPageView();
     await fetchInstructionsAndCorrections();
